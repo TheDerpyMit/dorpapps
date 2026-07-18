@@ -38,6 +38,7 @@ local isPrinterMode = false
 local txtcor
 local opullEvent = os.pullEvent
 local hijacked = false
+local needsRedraw = true
 
 function _G.os.pullEvent(filter)
     if coroutine.running() == txtcor and isPrinterMode then
@@ -215,14 +216,18 @@ local function txt()
         if isPrinterMode then
             local startX = math.floor((w - 25) / 2) + 1
             local startY = math.floor((h - 4 - 21) / 2) + 3
-            if startY < 3 then startY = 3 end
+            if startY < 4 then startY = 4 end
             
-            term.setBackgroundColor(tCol.bg)
-            term.clear()
-            
-            drawPageControls()
-            term.setTextColor(tCol.misc2)
-            lUtils.border(startX - 1, startY - 1, startX + 25, startY + 21, nil, 3)
+            if needsRedraw then
+                needsRedraw = false
+                term.setBackgroundColor(tCol.bg)
+                term.clear()
+                
+                drawPageControls()
+                term.setTextColor(tCol.misc2)
+                lUtils.border(startX - 1, startY - 1, startX + 25, startY + 21, nil, 3)
+                topbar()
+            end
             
             a[1].width = 25
             a[1].height = 21
@@ -324,6 +329,15 @@ local function txt()
         else
             a[1].width = w-1
             a[1].height = h-4
+            
+            if needsRedraw then
+                needsRedraw = false
+                term.setBackgroundColor(tCol.bg)
+                term.clear()
+                topbar()
+                scrollbars()
+                drawStatus()
+            end
             
             local textCol = tCol.txt
             a[1].sTable = {
@@ -491,10 +505,12 @@ function regevents()
             topbar()
             scrollbars()
             drawStatus()
+            needsRedraw = true
             coroutine.resume(txtcor,"mouse_click",1,1,1)
         elseif e[1] == "mouse_click" then
             local w,h = term.getSize()
             if isPrinterMode and e[4] == h-2 then
+                needsRedraw = true
                 local cx = e[3]
                 if cx >= 2 and cx <= 4 then
                     if currentPage > 1 then
@@ -714,6 +730,7 @@ function regevents()
                     end
                 end
                 topbar()
+                needsRedraw = true
                 term.setCursorPos(table.unpack(oldcursorpos))
                 term.setTextColor(colors.red)
                 term.setCursorBlink(true)
