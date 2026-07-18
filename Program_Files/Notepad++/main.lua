@@ -197,7 +197,7 @@ local function txt()
             term.setTextColor(tCol.misc2)
             lUtils.border(startX - 1, startY - 1, startX + 25, startY + 21, nil, 3)
             
-            a[1].width = 25
+            a[1].width = 26
             a[1].height = 21
             
             -- Backup lines and state before drawEditBox
