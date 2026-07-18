@@ -46,7 +46,7 @@ function _G.os.pullEvent(filter)
             return "mouse_click", 1, -999, -999
         end
         local event, button, x, y = opullEvent(filter)
-        if event == "char" or event == "key" or event == "paste" then
+        if event == "char" or event == "paste" or (event == "key" and (button == 14 or button == 28 or button == 261)) then
             hijacked = true
         end
         return event, button, x, y
