@@ -1,0 +1,11 @@
+# Ignore OS files and base systems
+LevelOS/
+bigfont
+blittle
+enchat/
+install.lua
+install_npp.lua
+startup.lua
+Installer.sgui
+.DS_Store
+Thumbs.db
