@@ -222,9 +222,9 @@ local function txt()
             
             drawPageControls()
             term.setTextColor(tCol.misc2)
-            lUtils.border(startX - 1, startY - 1, startX + 26, startY + 21, nil, 3)
+            lUtils.border(startX - 1, startY - 1, startX + 25, startY + 21, nil, 3)
             
-            a[1].width = 26
+            a[1].width = 25
             a[1].height = 21
             
             -- Backup lines and state before drawEditBox
@@ -236,6 +236,14 @@ local function txt()
             local backupCursorLine = a[5] or 1
             local backupScrollX = a[2] or 0
             local backupScrollY = a[3] or 0
+            
+            a[2] = 0
+            a[3] = 0
+            
+            local changesAllowed = true
+            if isReadOnly == true or (tFilepath ~= "" and fs.isReadOnly(tFilepath) == true) then
+                changesAllowed = false
+            end
             
             local textCol = tCol.txt
             a[1].sTable = {
@@ -249,30 +257,33 @@ local function txt()
             term.setCursorPos(1,5)
             term.setBackgroundColor(colors.white)
             term.setTextColor(colors.black)
-            local changesAllowed = true
-            if isReadOnly == true or (tFilepath ~= "" and fs.isReadOnly(tFilepath) == true) then
-                changesAllowed = false
-            end
             
             a = {lUtils.drawEditBox(a[1], startX, startY, a[2], a[3], a[4], a[5], true, true, nil, changesAllowed)}
             
+            -- Keep scroll at 0, 0
             a[2] = 0
+            a[3] = 0
             if a[4] and a[4] > 26 then
                 a[4] = 26
             end
             
-            -- Word wrap the text on the active page
-            local lines = a[1].lines
-            local lineIdx = 1
-            local cursorCol = a[4] or 1
-            local cursorLine = a[5] or 1
-            
-            while lineIdx <= #lines do
-                local line = lines[lineIdx]
-                if #line > 25 then
+            -- Check page lines limit first
+            if #a[1].lines > 21 then
+                a[1].lines = backupLines
+                a[4] = backupCursorCol
+                a[5] = backupCursorLine
+                local sp = peripheral.find("speaker")
+                if sp then
+                    pcall(sp.playNote, "bass", 1, 5)
+                end
+            else
+                -- Check if current line exceeds 25 characters (needs wrapping)
+                local curLineIdx = a[5] or 1
+                local line = a[1].lines[curLineIdx]
+                if line and #line > 25 then
                     local spacePos = nil
                     for i = 25, 1, -1 do
-                        if string.sub(line, i, i) == " " then
+                        if line:sub(i, i) == " " then
                             spacePos = i
                             break
                         end
@@ -280,84 +291,35 @@ local function txt()
                     
                     local part1, part2
                     if spacePos then
-                        part1 = string.sub(line, 1, spacePos)
-                        part2 = string.sub(line, spacePos + 1)
-                        
-                        if lineIdx == cursorLine then
-                            if cursorCol > spacePos then
-                                cursorLine = lineIdx + 1
-                                cursorCol = cursorCol - spacePos
-                            end
-                        elseif lineIdx < cursorLine then
-                            cursorLine = cursorLine + 1
-                        end
+                        part1 = line:sub(1, spacePos - 1)
+                        part2 = line:sub(spacePos + 1)
                     else
-                        part1 = string.sub(line, 1, 25)
-                        part2 = string.sub(line, 26)
-                        
-                        if lineIdx == cursorLine then
-                            if cursorCol > 25 then
-                                cursorLine = lineIdx + 1
-                                cursorCol = cursorCol - 25
-                            end
-                        elseif lineIdx < cursorLine then
-                            cursorLine = cursorLine + 1
-                        end
+                        part1 = line:sub(1, 25)
+                        part2 = line:sub(26)
                     end
                     
-                    lines[lineIdx] = part1
-                    table.insert(lines, lineIdx + 1, part2)
-                    a[1].changed = true
-                else
-                    local nextLine = lines[lineIdx + 1]
-                    if nextLine and #line < 25 then
-                        local firstWord = string.match(nextLine, "^[^%s]+")
-                        if firstWord and #line + #firstWord + 1 <= 25 then
-                            lines[lineIdx] = line .. (line:sub(-1) == " " and "" or " ") .. firstWord
-                            lines[lineIdx + 1] = string.sub(nextLine, #firstWord + 1):gsub("^%s+", "")
-                            
-                            if lines[lineIdx + 1] == "" and #lines > lineIdx + 1 then
-                                table.remove(lines, lineIdx + 1)
-                                if cursorLine > lineIdx + 1 then
-                                    cursorLine = cursorLine - 1
-                                end
-                            end
-                            
-                            if cursorLine == lineIdx + 1 then
-                                if cursorCol <= #firstWord + 1 then
-                                    cursorLine = lineIdx
-                                    cursorCol = #line + (line:sub(-1) == " " and 0 or 1) + cursorCol
-                                else
-                                    cursorCol = cursorCol - #firstWord
-                                    local diff = #nextLine - #lines[lineIdx + 1] - #firstWord
-                                    cursorCol = cursorCol - diff
-                                end
-                            elseif cursorLine > lineIdx + 1 then
-                                cursorLine = cursorLine - 1
-                            end
-                            a[1].changed = true
-                            lineIdx = lineIdx - 1
+                    if #a[1].lines >= 21 then
+                        -- Revert because wrapping would exceed 21 lines
+                        a[1].lines = backupLines
+                        a[4] = backupCursorCol
+                        a[5] = backupCursorLine
+                        local sp = peripheral.find("speaker")
+                        if sp then
+                            pcall(sp.playNote, "bass", 1, 5)
+                        end
+                    else
+                        a[1].lines[curLineIdx] = part1
+                        table.insert(a[1].lines, curLineIdx + 1, part2)
+                        a[1].changed = true
+                        
+                        -- Adjust cursor position
+                        local splitLen = spacePos or 25
+                        if a[4] > splitLen then
+                            a[5] = curLineIdx + 1
+                            a[4] = a[4] - splitLen
                         end
                     end
                 end
-                lineIdx = lineIdx + 1
-            end
-            
-            -- If we exceeded 21 lines, revert to backup and play beep
-            if #lines > 21 then
-                a[1].lines = backupLines
-                a[4] = backupCursorCol
-                a[5] = backupCursorLine
-                a[2] = backupScrollX
-                a[3] = backupScrollY
-                local sp = peripheral.find("speaker")
-                if sp then
-                    pcall(sp.playNote, "bass", 1, 5)
-                end
-            else
-                a[5] = cursorLine
-                a[4] = cursorCol
-                a[2] = 0
             end
         else
             a[1].width = w-1
