@@ -29,7 +29,7 @@ local function drawUI(progress, status)
     -- Title
     term.setCursorPos(2, 2)
     term.setTextColor(colors.yellow)
-    term.write("DorpOS Updater")
+    term.write("Dorp Apps Updater")
     
     -- Status text
     term.setCursorPos(2, 4)
@@ -127,7 +127,7 @@ end)
 if ok then
     drawUI(1.0, "Update successful!")
     os.sleep(1)
-    lUtils.popup("Updater", "All DorpOS apps have been successfully updated!", 29, 8, {"OK"})
+    lUtils.popup("Dorp Apps Updater", "All Dorp Apps have been successfully updated!", 29, 8, {"OK"})
 else
     lUtils.popup("Updater Error", "Update failed: " .. tostring(run_err), 29, 10, {"OK"})
 end

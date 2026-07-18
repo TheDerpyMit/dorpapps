@@ -261,7 +261,7 @@ function uiLoop()
 						http.request({url = last_search_url, binary = true})
 						if lOS and lOS.requestCache then
 							for url, req in pairs(lOS.requestCache) do
-								if url == last_search_url or url:match("^" .. last_search_url:gsub("%%", "%%%%") .. "#*0*$") then
+								if string.sub(url, 1, #last_search_url) == last_search_url then
 									req.binary = true
 								end
 							end
@@ -622,7 +622,7 @@ function audioLoop()
 				http.request({url = last_download_url, binary = true})
 				if lOS and lOS.requestCache then
 					for url, req in pairs(lOS.requestCache) do
-						if url == last_download_url or url:match("^" .. last_download_url:gsub("%%", "%%%%") .. "#*0*$") then
+						if string.sub(url, 1, #last_download_url) == last_download_url then
 							req.binary = true
 						end
 					end

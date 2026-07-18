@@ -1,5 +1,5 @@
--- DorpOS Custom Apps Installer
-print("DorpOS Custom Apps Installer starting...")
+-- Dorp Apps Custom Apps Installer
+print("Dorp Apps Installer starting...")
 
 local github_base = "https://raw.githubusercontent.com/TheDerpyMit/dorpapps/refs/heads/main/"
 
