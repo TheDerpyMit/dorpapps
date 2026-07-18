@@ -245,6 +245,11 @@ local function txt()
             
             _G.os.pullEvent = opull
             
+            a[2] = 0
+            if a[4] and a[4] > 26 then
+                a[4] = 26
+            end
+            
             -- Word wrap the text on the active page
             local lines = a[1].lines
             local lineIdx = 1
@@ -341,6 +346,7 @@ local function txt()
             else
                 a[5] = cursorLine
                 a[4] = cursorCol
+                a[2] = 0
             end
         else
             a[1].width = w-1
