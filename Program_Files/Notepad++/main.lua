@@ -227,7 +227,23 @@ local function txt()
                 changesAllowed = false
             end
             
+            local opull = os.pullEvent
+            local hijacked = false
+            _G.os.pullEvent = function(filter)
+                if hijacked then
+                    hijacked = false
+                    return "mouse_click", 1, -999, -999
+                end
+                local event, button, x, y = opull(filter)
+                if event == "char" or event == "key" or event == "paste" then
+                    hijacked = true
+                end
+                return event, button, x, y
+            end
+            
             a = {lUtils.drawEditBox(a[1], startX, startY, a[2], a[3], a[4], a[5], true, true, nil, changesAllowed)}
+            
+            _G.os.pullEvent = opull
             
             -- Word wrap the text on the active page
             local lines = a[1].lines
