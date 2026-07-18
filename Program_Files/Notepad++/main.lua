@@ -35,6 +35,26 @@ end
 local isHighlightEnabled = true
 local isPrinterMode = false
 
+local txtcor
+local opullEvent = os.pullEvent
+local hijacked = false
+
+function _G.os.pullEvent(filter)
+    if coroutine.running() == txtcor and isPrinterMode then
+        if hijacked then
+            hijacked = false
+            return "mouse_click", 1, -999, -999
+        end
+        local event, button, x, y = opullEvent(filter)
+        if event == "char" or event == "key" or event == "paste" then
+            hijacked = true
+        end
+        return event, button, x, y
+    else
+        return opullEvent(filter)
+    end
+end
+
 
 
 local theme = config.themes[config.current]
@@ -227,23 +247,7 @@ local function txt()
                 changesAllowed = false
             end
             
-            local opull = os.pullEvent
-            local hijacked = false
-            _G.os.pullEvent = function(filter)
-                if hijacked then
-                    hijacked = false
-                    return "mouse_click", 1, -999, -999
-                end
-                local event, button, x, y = opull(filter)
-                if event == "char" or event == "key" or event == "paste" then
-                    hijacked = true
-                end
-                return event, button, x, y
-            end
-            
             a = {lUtils.drawEditBox(a[1], startX, startY, a[2], a[3], a[4], a[5], true, true, nil, changesAllowed)}
-            
-            _G.os.pullEvent = opull
             
             a[2] = 0
             if a[4] and a[4] > 26 then
@@ -404,11 +408,15 @@ local function save()
             end
         end
     end
-    local savefile = fs.open(tFilepath,"w")
-    for t=1,#a[1].lines do
-        savefile.writeLine(a[1].lines[t])
+    local linesToSave = a[1].lines
+    if isPrinterMode then
+        linesToSave = pagesToLines(pages)
     end
-	savefile.close()
+    local savefile = fs.open(tFilepath,"w")
+    for t=1,#linesToSave do
+        savefile.writeLine(linesToSave[t])
+    end
+    savefile.close()
     return true
 end
 
@@ -487,7 +495,7 @@ end
 function regevents()
     scrollbars()
     drawStatus()
-    local txtcor = coroutine.create(txt)
+    txtcor = coroutine.create(txt)
     topbar()
     coroutine.resume(txtcor)
     while true do
