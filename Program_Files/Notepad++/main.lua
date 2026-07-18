@@ -52,6 +52,14 @@ function _G.os.pullEvent(filter)
         if event == "char" or event == "paste" or (event == "key" and (button == 14 or button == 28 or button == 261)) then
             hijacked = true
         end
+        if event == "key" and button == 28 and a[1] and #a[1].lines >= 21 then
+            hijacked = false
+            local sp = peripheral.find("speaker")
+            if sp then
+                pcall(sp.playNote, "bass", 1, 5)
+            end
+            return "mouse_click", 1, -999, -999
+        end
         return event, button, x, y
     else
         return opullEvent(filter)
@@ -700,6 +708,75 @@ function regevents()
                                 local line = a[5] or 1
                                 centerAlignLine(line)
                                 coroutine.resume(txtcor, "mouse_click", 1, 1, 1)
+                            elseif b[3] == "Search" then
+                                local searchRes = {lUtils.inputbox("Search","Enter search text:",29,8,{"Search","Cancel"})}
+                                if searchRes[2] ~= false and searchRes[4] == "Search" and searchRes[1] ~= "" then
+                                    local searchTerm = searchRes[1]
+                                    local startLine = a[5] or 1
+                                    local startCol = a[4] or 1
+                                    local found = false
+                                    for lineIdx = startLine, #a[1].lines do
+                                        local line = a[1].lines[lineIdx]
+                                        local searchFrom = lineIdx == startLine and startCol or 1
+                                        local pos = string.find(line, searchTerm, searchFrom)
+                                        if pos then
+                                            a[1].changed = true
+                                            a[5] = lineIdx
+                                            a[4] = pos + #searchTerm
+                                            coroutine.resume(txtcor, "mouse_click", 1, 1, 1)
+                                            found = true
+                                            break
+                                        end
+                                    end
+                                    if not found then
+                                        for lineIdx = 1, startLine - 1 do
+                                            local line = a[1].lines[lineIdx]
+                                            local pos = string.find(line, searchTerm)
+                                            if pos then
+                                                a[1].changed = true
+                                                a[5] = lineIdx
+                                                a[4] = pos + #searchTerm
+                                                coroutine.resume(txtcor, "mouse_click", 1, 1, 1)
+                                                found = true
+                                                break
+                                            end
+                                        end
+                                    end
+                                    if not found then
+                                        lUtils.popup("Search", "Text not found: " .. searchTerm, 29, 8, {"OK"})
+                                    end
+                                end
+                            elseif b[3] == "Replace" then
+                                local searchRes = {lUtils.inputbox("Replace","Find what:",29,8,{"Replace","Cancel"})}
+                                if searchRes[2] ~= false and searchRes[4] == "Replace" and searchRes[1] ~= "" then
+                                    local searchTerm = searchRes[1]
+                                    local replaceRes = {lUtils.inputbox("Replace","Replace with:",29,8,{"Replace","Cancel"})}
+                                    if replaceRes[2] ~= false and replaceRes[4] == "Replace" then
+                                        local replaceTerm = replaceRes[1]
+                                        local startLine = a[5] or 1
+                                        local startCol = a[4] or 1
+                                        local found = false
+                                        for lineIdx = startLine, #a[1].lines do
+                                            local line = a[1].lines[lineIdx]
+                                            local searchFrom = lineIdx == startLine and startCol or 1
+                                            local pos = string.find(line, searchTerm, searchFrom)
+                                            if pos then
+                                                local before = string.sub(line, 1, pos - 1)
+                                                local after = string.sub(line, pos + #searchTerm)
+                                                a[1].lines[lineIdx] = before .. replaceTerm .. after
+                                                a[1].changed = true
+                                                a[5] = lineIdx
+                                                a[4] = pos + #replaceTerm
+                                                found = true
+                                                coroutine.resume(txtcor, "mouse_click", 1, 1, 1)
+                                                break
+                                            end
+                                        end
+                                        if not found then
+                                            lUtils.popup("Replace", "Text not found: " .. searchTerm, 29, 8, {"OK"})
+                                        end
+                                    end
+                                end
 							elseif b[3] == "Theme Editor" then
                                 lUtils.openWin("Theme Editor", "Program_Files/Notepad++/theme_editor.lua", 5, 5, 34, 15, true)
                             elseif b[3] == "Highlighting: On" or b[3] == "Highlighting: Off" then
