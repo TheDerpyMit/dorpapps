@@ -39,6 +39,8 @@ local txtcor
 local opullEvent = os.pullEvent
 local hijacked = false
 local needsRedraw = true
+local scrollbars
+local drawStatus
 
 function _G.os.pullEvent(filter)
     if coroutine.running() == txtcor and isPrinterMode then
@@ -426,7 +428,7 @@ local function uwansave()
     end
 end
 
-local function scrollbars()
+scrollbars = function()
     local w,h = term.getSize()
     term.setCursorPos(1,h-1)
     term.setBackgroundColor(tCol.misc)
@@ -452,7 +454,7 @@ local function scrollbars()
     term.write(string.rep("\131", w))
 end
 
-local function drawStatus()
+drawStatus = function()
     local w,h = term.getSize()
     local line = (a[1] and a[5]) or 1
     local col = (a[1] and a[4]) or 1
