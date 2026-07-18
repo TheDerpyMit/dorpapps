@@ -55,7 +55,14 @@ function _G.os.pullEvent(filter)
     end
 end
 
-
+local oresume = coroutine.resume
+function coroutine.resume(co, ...)
+    local ok, err = oresume(co, ...)
+    if not ok and co == txtcor then
+        lUtils.popup("Notepad++ Error", tostring(err), 29, 9, {"OK"})
+    end
+    return ok, err
+end
 
 local theme = config.themes[config.current]
 local tCol = {
@@ -215,7 +222,7 @@ local function txt()
             
             drawPageControls()
             term.setTextColor(tCol.misc2)
-            lUtils.border(startX - 1, startY - 1, startX + 25, startY + 21, nil, 3)
+            lUtils.border(startX - 1, startY - 1, startX + 26, startY + 21, nil, 3)
             
             a[1].width = 26
             a[1].height = 21
