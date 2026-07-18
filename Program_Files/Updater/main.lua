@@ -60,7 +60,7 @@ end
 drawUI(0.05, "Connecting to GitHub...")
 
 local installer_url = "https://raw.githubusercontent.com/TheDerpyMit/dorpapps/refs/heads/main/install_dorp.lua"
-local res = http.get(installer_url)
+local res = http.get(installer_url .. "?cb=" .. math.random(1, 100000))
 if not res then
     lUtils.popup("Updater Error", "Failed to connect to GitHub! Check your Internet connection.", 29, 9, {"OK"})
     return
@@ -105,7 +105,8 @@ env.http = setmetatable({}, { __index = http })
 env.http.get = function(url, headers, binary)
     local filename = fs.getName(url) or "asset"
     updateProgress("Downloading: " .. filename)
-    return oHttpGet(url, headers, binary)
+    local cbUrl = url .. (url:find("?", 1, true) and "&" or "?") .. "cb=" .. math.random(1, 100000)
+    return oHttpGet(cbUrl, headers, binary)
 end
 
 local oFsOpen = fs.open

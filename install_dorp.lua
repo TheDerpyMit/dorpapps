@@ -41,7 +41,7 @@ for _, dl in ipairs(downloads) do
         fs.makeDir(dir)
     end
     print("  Downloading: " .. dl.dest)
-    local res = http.get(dl.url, nil, true) -- binary download mode
+    local res = http.get(dl.url .. "?cb=" .. math.random(1, 100000), nil, true) -- binary download mode
     if res then
         local f = fs.open(dl.dest, "wb")
         f.write(res.readAll())
