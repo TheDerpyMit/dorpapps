@@ -679,17 +679,30 @@ local function showTutorial()
             flatBtn(math.floor(mw / 2) - 4, mh - 2, 8, "Close", colors.gray, colors.white)
         end
         redraw()
+        local clickedRow = nil
         while true do
             local e = {os.pullEvent()}
-            if e[1] == "term_resize" then redraw()
+            if e[1] == "term_resize" then
+                mw, mh = term.getSize()
+                redraw()
             elseif e[1] == "mouse_click" and e[2] == 1 then
+                -- Record the row clicked; act on mouse_up to avoid leaving
+                -- a dangling mouse_up event that lUtils.openWin mishandles
+                clickedRow = e[4]
+            elseif e[1] == "mouse_up" and e[2] == 1 then
                 local mw2, mh2 = term.getSize()
-                if e[4] == mh2 - 2 then
-                    if pg > 1 and e[3] >= 2 and e[3] <= 9 then pg = pg - 1; redraw()
-                    elseif pg < #pages2 and e[3] >= mw2 - 8 then pg = pg + 1; redraw()
-                    elseif e[3] >= math.floor(mw2 / 2) - 4 and e[3] <= math.floor(mw2 / 2) + 3 then return end
+                if clickedRow and clickedRow == mh2 - 2 and e[4] == mh2 - 2 then
+                    if pg > 1 and e[3] >= 2 and e[3] <= 9 then
+                        pg = pg - 1; redraw()
+                    elseif pg < #pages2 and e[3] >= mw2 - 8 then
+                        pg = pg + 1; redraw()
+                    elseif e[3] >= math.floor(mw2 / 2) - 4 and e[3] <= math.floor(mw2 / 2) + 3 then
+                        return  -- Close button
+                    end
                 end
-            elseif e[1] == "key" and (e[2] == keys.enter or e[2] == keys.q) then return
+                clickedRow = nil
+            elseif e[1] == "key" and (e[2] == keys.enter or e[2] == keys.q) then
+                return
             end
         end
     end
@@ -817,6 +830,24 @@ end
 loadConfig()
 loadDatabase()
 sellerName = config.merchantName
+
+-- ─────────────────────────────────────────
+-- Printer check
+-- ─────────────────────────────────────────
+do
+    local printer = peripheral.find("printer")
+    if not printer then
+        term.setBackgroundColor(colors.black)
+        term.clear()
+        term.setCursorPos(1,1)
+        lUtils.popup(
+            "Store Manager",
+            "No printer detected!\n\nStore Manager needs a printer\nattached to work properly.\n\nPlease connect a printer and\nrelaunch the app.",
+            36, 12, {"OK"}
+        )
+        return
+    end
+end
 
 drawUI()
 
