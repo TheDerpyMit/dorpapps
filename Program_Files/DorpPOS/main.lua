@@ -899,7 +899,8 @@ local function printReceipt()
     local dateStr = os.date and os.date("%d/%m") or "00/00"
     local lines2 = {
         "-------------------------",
-        string.format("RECEIPT %s %s-%s", dateStr, sellerName, buyerName),
+        string.format("RECEIPT %s", dateStr),
+        sellerName,
         "-------------------------",
         "Sale of:",
         "",
