@@ -446,7 +446,7 @@ local function showItemModal(existingItem, itemIdx)
             term.clear()
             
             -- Draw border around the modal window
-            term.setTextColor(colors.gray)
+            term.setTextColor(colors.black)
             lUtils.border(1, 1, mw, mh, nil, 3)
 
             -- Content
@@ -578,7 +578,7 @@ local function showSettingsModal()
             term.clear()
             
             -- Draw border around the modal window
-            term.setTextColor(colors.gray)
+            term.setTextColor(colors.black)
             lUtils.border(1, 1, mw, mh, nil, 3)
 
             label(2, 2, "Merchant Name:", colors.black, colors.lightGray)
@@ -684,7 +684,7 @@ local function showTutorial()
             term.clear()
             
             -- Draw border around the modal window
-            term.setTextColor(colors.gray)
+            term.setTextColor(colors.black)
             lUtils.border(1, 1, mw, mh, nil, 3)
 
             local p = pages2[pg]
