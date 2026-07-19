@@ -107,6 +107,24 @@ if not fs.exists("Program_Files") then
     fs.makeDir("Program_Files")
 end
 
+-- Wipe old app directories to ensure clean install
+print("Wiping old app versions...")
+local wipeDirs = {
+    "Program_Files/Notepad++",
+    "Program_Files/dorpchat",
+    "Program_Files/SysInfo",
+    "Program_Files/Music",
+    "Program_Files/Updater",
+    "Program_Files/Gelbooru",
+    "Program_Files/DorpPOS",
+    "Program_Files/StoreManager",
+}
+for _, d in ipairs(wipeDirs) do
+    if fs.exists(d) then
+        fs.delete(d)
+    end
+end
+
 -- Files mapping to copy
 local files = {
     ["NotepadPlusPlus/main.lua"] = "Program_Files/Notepad++/main.lua",
@@ -316,6 +334,9 @@ if fs.exists(loginScreenPath) then
 end
 
 print("\nInstallation successful!")
+print("Rebooting computer in 2 seconds to restart LevelOS...")
+os.sleep(2)
+os.reboot()
 ]]
 
 local f = fs.open(installerPath, "w")

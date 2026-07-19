@@ -46,6 +46,24 @@ local downloads = {
     { url = github_base .. "desktop.nfp", dest = "User/Images/desktop.nfp" }
 }
 
+-- Wipe old app directories to ensure clean install
+print("  Wiping old app versions...")
+local wipeDirs = {
+    "Program_Files/Notepad++",
+    "Program_Files/dorpchat",
+    "Program_Files/SysInfo",
+    "Program_Files/Music",
+    "Program_Files/Updater",
+    "Program_Files/Gelbooru",
+    "Program_Files/DorpPOS",
+    "Program_Files/StoreManager",
+}
+for _, dir in ipairs(wipeDirs) do
+    if fs.exists(dir) then
+        fs.delete(dir)
+    end
+end
+
 for _, dl in ipairs(downloads) do
     local dir = fs.getDir(dl.dest)
     if dir ~= "" and not fs.exists(dir) then
@@ -196,4 +214,6 @@ if fs.exists(loginScreenPath) then
 end
 
 print("\nInstallation complete!")
-print("Restart LevelOS or check your Desktop to see the new apps!")
+print("Rebooting computer in 2 seconds to restart LevelOS...")
+os.sleep(2)
+os.reboot()
