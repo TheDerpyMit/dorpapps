@@ -80,7 +80,7 @@ local unsaved       = false  -- dirty flag for config/items
 
 -- Menu bar button regions
 local menuBtns = {
-    { label = "File", x = 0, w = 0, options = { "Save Settings", "Quit" }                },
+    { label = "File", x = 0, w = 0, options = { "Save Settings" }                       },
     { label = "Info", x = 0, w = 0, options = { "How to Use" }                           },
 }
 
@@ -774,12 +774,7 @@ local function handleMenu(btn)
     drawMenuBar()
     if not ok then return end
 
-    if item == "Quit" then
-        term.setBackgroundColor(colors.black)
-        term.clear()
-        term.setCursorPos(1, 1)
-        if os.exit then os.exit() else error("quit", 0) end
-    elseif item == "Save Settings" then
+    if item == "Save Settings" then
         showSettingsModal()
     elseif item == "How to Use" then
         showTutorial()
