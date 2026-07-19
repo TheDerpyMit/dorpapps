@@ -243,11 +243,21 @@ while true do\
 \9\9\9\9true\
 \9\9\9)\
     \9\9if r then\
+    \9\9\9local code = r.getResponseCode()\
     \9\9\9local hdrs = r.getResponseHeaders()\
-    \9\9\9s.var.gpu_w = tonumber(hdrs[\"x-img-w\"])\
-    \9\9\9s.var.gpu_h = tonumber(hdrs[\"x-img-h\"])\
-    \9\9\9s.var.gpu_jpeg = r.readAll()\
+    \9\9\9if code == 200 and hdrs[\"x-img-w\"] and hdrs[\"x-img-h\"] then\
+    \9\9\9\9s.var.gpu_w = tonumber(hdrs[\"x-img-w\"])\
+    \9\9\9\9s.var.gpu_h = tonumber(hdrs[\"x-img-h\"])\
+    \9\9\9\9s.var.gpu_jpeg = r.readAll()\
+    \9\9\9else\
+    \9\9\9\9local errMsg = r.readAll()\
+    \9\9\9\9if not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
+    \9\9\9\9_G.lUtils.popup(\"Gelbooru Error\", \"Image conversion failed!\\n\\nServer code: \" .. tostring(code) .. \"\\nResponse: \" .. string.sub(errMsg or \"\", 1, 60), 32, 10, {\"OK\"})\
+    \9\9\9end\
     \9\9\9r.close()\
+    \9\9else\
+    \9\9\9if not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
+    \9\9\9_G.lUtils.popup(\"Gelbooru Error\", \"Failed to connect to image conversion server:\\n\" .. tostring(e), 32, 9, {\"OK\"})\
     \9\9end\
     \9s.var.rendered_gpu = nil\
 \9end\
