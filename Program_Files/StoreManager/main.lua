@@ -208,15 +208,6 @@ local function drawLeftPanel()
         fill(1, row, DIVX - 1, colors.gray)
     end
 
-    -- Blue section header strip
-    term.setCursorPos(1, 3)
-    term.setBackgroundColor(colors.blue)
-    term.setTextColor(colors.yellow)
-    term.write(" CART" .. string.rep(" ", DIVX - 6))
-    term.setBackgroundColor(colors.lightBlue)
-    term.setTextColor(colors.white)
-    term.write(" ")
-
     -- Cart list
     local cartList = {}
     for n, q in pairs(cart) do table.insert(cartList, {n, q}) end
@@ -294,6 +285,13 @@ local function drawLeftPanel()
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.black)
     lUtils.border(1, 3, DIVX - 1, h - 1, nil, 3)
+
+    -- Blue section header strip inside the border (row 3, from x=2 to x=DIVX-2)
+    term.setCursorPos(2, 3)
+    term.setBackgroundColor(colors.blue)
+    term.setTextColor(colors.yellow)
+    local headerText = " CART"
+    term.write(headerText .. string.rep(" ", (DIVX - 3) - #headerText))
 end
 
 -- ─────────────────────────────────────────
@@ -313,18 +311,6 @@ local function drawRightPanel()
     for row = 3, h - 1 do
         fill(DIVX, row, w - DIVX + 1, colors.gray)
     end
-
-    -- Blue section header strip
-    term.setCursorPos(DIVX, 3)
-    term.setBackgroundColor(colors.blue)
-    term.setTextColor(colors.yellow)
-    term.write(" QUICK ITEMS")
-    local addLabel  = "+ Add Item"
-    local hdrRight  = w - #addLabel
-    term.setCursorPos(hdrRight, 3)
-    term.setBackgroundColor(colors.cyan)
-    term.setTextColor(colors.black)
-    term.write(addLabel)
 
     -- Edit mode toggle
     local editLabel = editMode and "[ Edit: ON ]" or "[ Edit: OFF ]"
@@ -380,6 +366,22 @@ local function drawRightPanel()
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.black)
     lUtils.border(DIVX, 3, w, h - 1, nil, 3)
+
+    -- Blue section header strip inside the border (row 3, from x=DIVX+1 to x=w-1)
+    term.setCursorPos(DIVX + 1, 3)
+    term.setBackgroundColor(colors.blue)
+    term.setTextColor(colors.yellow)
+    term.write(string.rep(" ", w - DIVX - 1))
+    
+    term.setCursorPos(DIVX + 2, 3)
+    term.write("QUICK ITEMS")
+
+    local addLabel  = "+ Add Item"
+    local addX = w - #addLabel - 1
+    term.setCursorPos(addX, 3)
+    term.setBackgroundColor(colors.cyan)
+    term.setTextColor(colors.black)
+    term.write(addLabel)
 end
 
 -- ─────────────────────────────────────────
@@ -440,28 +442,35 @@ local function showItemModal(existingItem, itemIdx)
     local function modalFn()
         local mw, mh = term.getSize()
         local function redraw(activeF)
-            term.setBackgroundColor(colors.gray)
+            term.setBackgroundColor(colors.lightGray)
             term.clear()
-            -- header area already drawn by openWin
+            
+            -- Draw border around the modal window
+            term.setTextColor(colors.gray)
+            lUtils.border(1, 1, mw, mh, nil, 3)
+
             -- Content
-            label(2, 2, "Item Name:", colors.lightGray, colors.gray)
+            label(2, 2, "Item Name:", colors.black, colors.lightGray)
             term.setCursorPos(2, 3)
-            term.setBackgroundColor(activeF == "name" and colors.blue or colors.black)
-            term.setTextColor(colors.white)
+            term.setBackgroundColor(activeF == "name" and colors.blue or colors.white)
+            term.setTextColor(activeF == "name" and colors.white or colors.black)
             term.write(" " .. clamp(mName, mw - 4) .. string.rep(" ", mw - 4 - math.min(#mName, mw - 4)) .. " ")
 
-            label(2, 5, "Default Price:", colors.lightGray, colors.gray)
+            label(2, 5, "Default Price:", colors.black, colors.lightGray)
             -- Qty
             term.setCursorPos(2, 6)
-            term.setBackgroundColor(activeF == "qty" and colors.blue or colors.black)
-            term.setTextColor(colors.white)
+            term.setBackgroundColor(activeF == "qty" and colors.blue or colors.white)
+            term.setTextColor(activeF == "qty" and colors.white or colors.black)
             term.write(" " .. clamp(mQty, 5) .. string.rep(" ", 5 - math.min(#mQty, 5)) .. " ")
-            term.setBackgroundColor(colors.gray)
-            term.setTextColor(colors.lightGray)
+            
+            term.setBackgroundColor(colors.lightGray)
+            term.setTextColor(colors.black)
             term.write(" x ")
-            term.setBackgroundColor(activeF == "cur" and colors.blue or colors.black)
-            term.setTextColor(colors.white)
-            local cw2 = mw - 12
+            
+            term.setCursorPos(10, 6)
+            term.setBackgroundColor(activeF == "cur" and colors.blue or colors.white)
+            term.setTextColor(activeF == "cur" and colors.white or colors.black)
+            local cw2 = mw - 11
             term.write(" " .. clamp(mCur, cw2) .. string.rep(" ", cw2 - math.min(#mCur, cw2)) .. " ")
 
             -- Buttons
@@ -565,15 +574,20 @@ local function showSettingsModal()
     local function settingsFn()
         local mw, mh = term.getSize()
         local function redraw()
-            term.setBackgroundColor(colors.gray)
+            term.setBackgroundColor(colors.lightGray)
             term.clear()
-            label(2, 2, "Merchant Name:", colors.lightGray, colors.gray)
+            
+            -- Draw border around the modal window
+            term.setTextColor(colors.gray)
+            lUtils.border(1, 1, mw, mh, nil, 3)
+
+            label(2, 2, "Merchant Name:", colors.black, colors.lightGray)
             term.setCursorPos(2, 3)
             term.setBackgroundColor(colors.blue)
             term.setTextColor(colors.white)
             local d = clamp(mName, mw - 4)
             term.write(" " .. d .. string.rep(" ", mw - 4 - #d) .. " ")
-            label(2, 5, "Press Enter or click Save", colors.lightGray, colors.gray)
+            label(2, 5, "Press Enter or click Save", colors.black, colors.lightGray)
             flatBtn(2, mh - 2, 8, "Save", colors.lime, colors.black)
             flatBtn(12, mh - 2, 8, "Cancel", colors.gray, colors.white)
         end
@@ -666,26 +680,32 @@ local function showTutorial()
     local function tutFn()
         local mw, mh = term.getSize()
         local function redraw()
-            term.setBackgroundColor(colors.gray)
+            term.setBackgroundColor(colors.lightGray)
             term.clear()
+            
+            -- Draw border around the modal window
+            term.setTextColor(colors.gray)
+            lUtils.border(1, 1, mw, mh, nil, 3)
+
             local p = pages2[pg]
-            -- Title
-            term.setCursorPos(1, 1)
+            
+            -- Inset Title strip (drawn at y=2, width = mw-2)
+            term.setCursorPos(2, 2)
             term.setBackgroundColor(colors.blue)
             term.setTextColor(colors.white)
-            term.write(string.rep(" ", mw))
-            local tx = math.floor((mw - #p.title) / 2) + 1
-            term.setCursorPos(tx, 1)
-            term.write(p.title)
-            -- Text body
+            local titleLine = " " .. p.title
+            term.write(titleLine .. string.rep(" ", mw - 2 - #titleLine))
+
+            -- Text body (moved to y = 3 + i, background lightGray, text black)
             for i, ln in ipairs(p.text) do
-                label(2, 2 + i, ln, colors.white, colors.gray)
+                label(2, 3 + i, ln, colors.black, colors.lightGray)
             end
+
             -- Paging
             local pageStr2 = pg .. "/" .. #pages2
-            label(mw - #pageStr2 - 1, mh - 2, pageStr2, colors.lightGray, colors.gray)
-            if pg > 1 then flatBtn(2, mh - 2, 8, "\17 Prev", colors.lightGray, colors.black) end
-            if pg < #pages2 then flatBtn(mw - 9, mh - 2, 9, "Next \16", colors.lightGray, colors.black) end
+            label(mw - #pageStr2 - 1, mh - 2, pageStr2, colors.gray, colors.lightGray)
+            if pg > 1 then flatBtn(2, mh - 2, 8, "\17 Prev", colors.gray, colors.white) end
+            if pg < #pages2 then flatBtn(mw - 9, mh - 2, 9, "Next \16", colors.gray, colors.white) end
             flatBtn(math.floor(mw / 2) - 4, mh - 2, 8, "Close", colors.gray, colors.white)
         end
         redraw()
