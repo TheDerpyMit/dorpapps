@@ -778,7 +778,7 @@ local function handleMenu(btn)
         term.setBackgroundColor(colors.black)
         term.clear()
         term.setCursorPos(1, 1)
-        os.exit and os.exit() or error("quit", 0)
+        if os.exit then os.exit() else error("quit", 0) end
     elseif item == "Save Settings" then
         showSettingsModal()
     elseif item == "How to Use" then
