@@ -31,6 +31,12 @@ local downloads = {
     { url = github_base .. "music_icon.bimg", dest = "Program_Files/Music/icon.bimg" },
     { url = github_base .. "music_icon.bimg", dest = "Program_Files/Music/taskbar.bimg" },
     
+    -- Gelbooru
+    { url = github_base .. "Program_Files/Gelbooru/main.lua", dest = "Program_Files/Gelbooru/main.lua" },
+    { url = github_base .. "Program_Files/Gelbooru/icon.bimg", dest = "Program_Files/Gelbooru/icon.bimg" },
+    { url = github_base .. "Program_Files/Gelbooru/taskbar.bimg", dest = "Program_Files/Gelbooru/taskbar.bimg" },
+    { url = github_base .. "Program_Files/Gelbooru/monrun.lua", dest = "Program_Files/Gelbooru/monrun.lua" },
+    
     -- Wallpaper
     { url = github_base .. "desktop.nfp", dest = "User/Images/desktop.nfp" }
 }
@@ -93,7 +99,8 @@ local shortcuts = {
     { name = "DorpChat.llnk", target = "Program_Files/dorpchat/main.lua" },
     { name = "SysInfo.llnk", target = "Program_Files/SysInfo/main.lua" },
     { name = "Music.llnk", target = "Program_Files/Music/main.lua" },
-    { name = "Updater.llnk", target = "Program_Files/Updater/main.lua" }
+    { name = "Updater.llnk", target = "Program_Files/Updater/main.lua" },
+    { name = "Gelbooru.llnk", target = "Program_Files/Gelbooru/main.lua" }
 }
 
 for _, sc in ipairs(shortcuts) do

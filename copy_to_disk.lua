@@ -49,6 +49,11 @@ local files = {
     ["music.lua"] = "Music/main.lua",
     ["music_icon.bimg"] = "Music/icon.bimg",
     ["music_icon.bimg"] = "Music/taskbar.bimg",
+    -- Gelbooru
+    ["Program_Files/Gelbooru/main.lua"] = "Gelbooru/main.lua",
+    ["Program_Files/Gelbooru/icon.bimg"] = "Gelbooru/icon.bimg",
+    ["Program_Files/Gelbooru/taskbar.bimg"] = "Gelbooru/taskbar.bimg",
+    ["Program_Files/Gelbooru/monrun.lua"] = "Gelbooru/monrun.lua",
     -- Wallpaper
     ["desktop.nfp"] = "desktop.nfp"
 }
@@ -117,6 +122,10 @@ local files = {
     ["Music/main.lua"] = "Program_Files/Music/main.lua",
     ["Music/icon.bimg"] = "Program_Files/Music/icon.bimg",
     ["Music/taskbar.bimg"] = "Program_Files/Music/taskbar.bimg",
+    ["Gelbooru/main.lua"] = "Program_Files/Gelbooru/main.lua",
+    ["Gelbooru/icon.bimg"] = "Program_Files/Gelbooru/icon.bimg",
+    ["Gelbooru/taskbar.bimg"] = "Program_Files/Gelbooru/taskbar.bimg",
+    ["Gelbooru/monrun.lua"] = "Program_Files/Gelbooru/monrun.lua",
     ["desktop.nfp"] = "User/Images/desktop.nfp"
 }
 
@@ -208,6 +217,13 @@ local f5 = fs.open(updaterLink, "w")
 f5.write('{ "Program_Files/Updater/main.lua" }')
 f5.close()
 print("  Created Shortcut: " .. updaterLink)
+
+-- Gelbooru Link
+local gelbooruLink = fs.combine(desktopDir, "Gelbooru.llnk")
+local f6 = fs.open(gelbooruLink, "w")
+f6.write('{ "Program_Files/Gelbooru/main.lua" }')
+f6.close()
+print("  Created Shortcut: " .. gelbooruLink)
 
 print("\nInstallation successful!")
 ]]
