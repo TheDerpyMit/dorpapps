@@ -203,13 +203,20 @@ end
 local DIVX = 24   -- x position of vertical separator
 
 local function drawLeftPanel()
-    -- Background fill
+    -- Panel background fill
     for row = 3, h - 1 do
         fill(1, row, DIVX - 1, colors.gray)
     end
 
-    -- Section header
-    label(2, 3, "CART", colors.yellow, colors.gray)
+    -- Blue section header strip
+    term.setCursorPos(1, 3)
+    term.setBackgroundColor(colors.blue)
+    term.setTextColor(colors.yellow)
+    term.write(" CART" .. string.rep(" ", DIVX - 6))
+    term.setBackgroundColor(colors.lightBlue)
+    term.setTextColor(colors.white)
+    term.write(" ")
+
     -- Cart list
     local cartList = {}
     for n, q in pairs(cart) do table.insert(cartList, {n, q}) end
@@ -279,20 +286,14 @@ local function drawLeftPanel()
     term.write(string.rep("\140", DIVX - 1))
 
     -- Action buttons: PRINT + CLEAR
-    local printBg = colors.lime
-    local clearBg = colors.red
     local btnW = math.floor((DIVX - 3) / 2)
+    flatBtn(2, 17, btnW, "PRINT", colors.lime, colors.black)
+    flatBtn(2 + btnW + 1, 17, btnW, "CLEAR", colors.red, colors.white)
 
-    flatBtn(2, 17, btnW, "PRINT", printBg, colors.black)
-    flatBtn(2 + btnW + 1, 17, btnW, "CLEAR", clearBg, colors.white)
-
-    -- Vertical separator
-    for row = 3, h - 1 do
-        term.setCursorPos(DIVX, row)
-        term.setBackgroundColor(colors.gray)
-        term.setTextColor(colors.lightGray)
-        term.write("\149")
-    end
+    -- Raised border around left panel (black outer bg makes this pop)
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.black)
+    lUtils.border(1, 3, DIVX - 1, h - 1, nil, 3)
 end
 
 -- ─────────────────────────────────────────
@@ -308,24 +309,27 @@ local function drawRightPanel()
     GRID_W = w - DIVX
     BTN_W  = math.floor((GRID_W - BTN_GAP * (ITEMS_PER_ROW + 1)) / ITEMS_PER_ROW)
 
-    -- Background
+    -- Panel background
     for row = 3, h - 1 do
-        fill(DIVX + 1, row, w - DIVX, colors.gray)
+        fill(DIVX, row, w - DIVX + 1, colors.gray)
     end
 
-    -- Header row
-    label(DIVX + 2, 3, "QUICK ITEMS", colors.yellow, colors.gray)
+    -- Blue section header strip
+    term.setCursorPos(DIVX, 3)
+    term.setBackgroundColor(colors.blue)
+    term.setTextColor(colors.yellow)
+    term.write(" QUICK ITEMS")
+    local addLabel  = "+ Add Item"
+    local hdrRight  = w - #addLabel
+    term.setCursorPos(hdrRight, 3)
+    term.setBackgroundColor(colors.cyan)
+    term.setTextColor(colors.black)
+    term.write(addLabel)
 
+    -- Edit mode toggle
     local editLabel = editMode and "[ Edit: ON ]" or "[ Edit: OFF ]"
     local editBg    = editMode and colors.orange or colors.gray
     local editFg    = editMode and colors.black or colors.lightGray
-    local addLabel  = "+ Add Item"
-    local hdrRight  = w - #addLabel - 1
-
-    -- Add button (top-right of panel)
-    flatBtn(hdrRight, 3, #addLabel, addLabel, colors.blue, colors.white)
-
-    -- Edit mode toggle
     flatBtn(DIVX + 2, 4, #editLabel, editLabel, editBg, editFg)
 
     -- Draw grid
@@ -334,8 +338,8 @@ local function drawRightPanel()
     local col   = 0
 
     for idx = startIdx, math.min(#items, page * ITEMS_PER_PAGE) do
-        local item   = items[idx]
-        local bx     = DIVX + 1 + BTN_GAP + col * (BTN_W + BTN_GAP)
+        local item     = items[idx]
+        local bx       = DIVX + 1 + BTN_GAP + col * (BTN_W + BTN_GAP)
         local priceStr = string.format("%dx %s", item.priceQty, item.priceItem)
         itemBtn(bx, row_y, BTN_W, BTN_H, item.name, priceStr, editMode, false)
 
@@ -350,10 +354,10 @@ local function drawRightPanel()
     local maxPage = math.max(1, math.ceil(#items / ITEMS_PER_PAGE))
     local pageStr = string.format(" Page %d/%d ", page, maxPage)
 
-    term.setCursorPos(DIVX + 1, h - 1)
+    term.setCursorPos(DIVX, h - 1)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.lightGray)
-    term.write(string.rep(" ", GRID_W))
+    term.write(string.rep(" ", GRID_W + 1))
 
     if page > 1 then
         term.setCursorPos(DIVX + 1, h - 1)
@@ -367,10 +371,15 @@ local function drawRightPanel()
         term.setTextColor(colors.black)
         term.write(" \16 ")
     end
-    term.setCursorPos(DIVX + 1 + math.floor((GRID_W - #pageStr) / 2), h - 1)
+    term.setCursorPos(DIVX + math.floor((GRID_W - #pageStr) / 2), h - 1)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.lightGray)
     term.write(pageStr)
+
+    -- Raised border around right panel
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.black)
+    lUtils.border(DIVX, 3, w, h - 1, nil, 3)
 end
 
 -- ─────────────────────────────────────────
@@ -389,7 +398,8 @@ end
 -- Full redraw
 -- ─────────────────────────────────────────
 local function drawUI()
-    term.setBackgroundColor(colors.gray)
+    w, h = term.getSize()
+    term.setBackgroundColor(colors.black)
     term.clear()
     drawMenuBar()
     drawLeftPanel()
