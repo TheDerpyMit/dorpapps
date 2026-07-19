@@ -1,708 +1,947 @@
 -- Program_Files/StoreManager/main.lua
 -- Store Manager POS Application for LevelOS
+-- A polished POS system following LevelOS UI conventions
 
 shell.run("LevelOS/startup/lUtils")
 
-local w, h = term.getSize()
+-- ─────────────────────────────────────────
+-- Database & Persistence
+-- ─────────────────────────────────────────
+local dbPath      = "AppData/StoreManager/items.lconf"
+local configPath  = "AppData/StoreManager/config.lconf"
 
--- Colors
-local bgCol = colors.gray
-local barCol = colors.blue
-local textCol = colors.white
-local cardCol = colors.lightGray
-local activeCol = colors.lightBlue
-local inactiveCol = colors.black
-local btnCol = colors.green
-local btnTextCol = colors.white
-local errorCol = colors.red
+local items  = {}   -- { name, priceQty, priceItem }
+local config = { merchantName = "Merchant", firstRun = true }
 
--- State Variables
-local dbPath = "AppData/StoreManager/items.lconf"
-local items = {}
-local cart = {}      -- maps item_name -> qty
-local page = 1
-local itemsPerPage = 8
-local editMode = false
-local activeField = nil -- "seller", "buyer", "priceQty", "priceItem"
-local statusMsg = "Status: Ready"
-
--- Input Values
-local sellerName = "Merchant"
-local buyerName = "Customer"
-local priceQty = "0"
-local priceItem = "Diamond"
-
--- Modal State (for Add/Edit Item dialogs)
-local modal = nil -- nil, "add", "edit"
-local editItemIndex = nil -- index in items list when editing
-local modalItemName = ""
-local modalPriceQty = "1"
-local modalPriceItem = "Diamond"
-local modalActiveField = nil -- "name", "qty", "item"
-
--- Ensure directories exist and load database
-local function loadDatabase()
+local function ensureDirs()
     if not fs.exists("AppData") then fs.makeDir("AppData") end
     if not fs.exists("AppData/StoreManager") then fs.makeDir("AppData/StoreManager") end
-    
+end
+
+local function loadDatabase()
+    ensureDirs()
     if fs.exists(dbPath) then
         local f = fs.open(dbPath, "r")
-        local data = textutils.unserialize(f.readAll())
+        local d = textutils.unserialize(f.readAll())
         f.close()
-        if type(data) == "table" then
-            items = data
-            return
-        end
+        if type(d) == "table" then items = d end
+    else
+        items = {
+            { name = "Diamond Sword",     priceQty = 3, priceItem = "Diamond"    },
+            { name = "Enchanted Apple",   priceQty = 8, priceItem = "Gold Ingot" },
+            { name = "Golden Carrot",     priceQty = 2, priceItem = "Gold Ingot" },
+            { name = "Iron Ingot",        priceQty = 4, priceItem = "Coal"       },
+            { name = "Potion of Healing", priceQty = 1, priceItem = "Emerald"    },
+            { name = "Diamond",           priceQty = 2, priceItem = "Emerald"    },
+            { name = "Emerald",           priceQty = 1, priceItem = "Gold Ingot" },
+            { name = "Steak",             priceQty = 1, priceItem = "Coal"       },
+        }
+        local f = fs.open(dbPath, "w") f.write(textutils.serialize(items)) f.close()
     end
-    
-    -- Default Items Database
-    items = {
-        { name = "Diamond Sword", priceQty = 3, priceItem = "Diamond" },
-        { name = "Enchanted Apple", priceQty = 8, priceItem = "Gold Ingot" },
-        { name = "Golden Carrot", priceQty = 2, priceItem = "Gold Ingot" },
-        { name = "Iron Ingot", priceQty = 4, priceItem = "Coal" },
-        { name = "Potion of Healing", priceQty = 1, priceItem = "Emerald" },
-        { name = "Diamond", priceQty = 2, priceItem = "Emerald" },
-        { name = "Emerald", priceQty = 1, priceItem = "Gold Ingot" },
-        { name = "Steak", priceQty = 1, priceItem = "Coal" }
-    }
-    local f = fs.open(dbPath, "w")
-    f.write(textutils.serialize(items))
-    f.close()
 end
 
 local function saveDatabase()
-    local f = fs.open(dbPath, "w")
-    f.write(textutils.serialize(items))
-    f.close()
+    ensureDirs()
+    local f = fs.open(dbPath, "w") f.write(textutils.serialize(items)) f.close()
 end
 
--- Helper: Auto calculate price based on items in cart
+local function loadConfig()
+    ensureDirs()
+    if fs.exists(configPath) then
+        local f = fs.open(configPath, "r")
+        local d = textutils.unserialize(f.readAll())
+        f.close()
+        if type(d) == "table" then config = d end
+    end
+end
+
+local function saveConfig()
+    ensureDirs()
+    local f = fs.open(configPath, "w") f.write(textutils.serialize(config)) f.close()
+end
+
+-- ─────────────────────────────────────────
+-- State
+-- ─────────────────────────────────────────
+local w, h          = term.getSize()
+local cart          = {}   -- map item_name -> qty
+local sellerName    = ""
+local buyerName     = ""
+local priceQty      = "0"
+local priceItem     = "Diamond"
+local activeField   = nil  -- "seller"|"buyer"|"priceQty"|"priceItem"
+local editMode      = false
+local page          = 1
+local ITEMS_PER_ROW = 2
+local ROWS_PER_PAGE = 4
+local ITEMS_PER_PAGE= ITEMS_PER_ROW * ROWS_PER_PAGE
+local statusMsg     = "Ready"
+local unsaved       = false  -- dirty flag for config/items
+
+-- Menu bar button regions
+local menuBtns = {
+    { label = "File", x = 0, w = 0, options = { "Save Settings", "Quit" }                },
+    { label = "Info", x = 0, w = 0, options = { "How to Use" }                           },
+}
+
+-- ─────────────────────────────────────────
+-- Helper: clamp strings for display
+-- ─────────────────────────────────────────
+local function clamp(s, maxLen)
+    if #s > maxLen then return s:sub(1, maxLen - 1) .. "\187" end
+    return s
+end
+
+-- ─────────────────────────────────────────
+-- Auto price calculation from cart
+-- ─────────────────────────────────────────
 local function autoCalcPrice()
-    local total = 0
-    local currency = nil
-    local match = true
-    
-    for itemName, qty in pairs(cart) do
-        -- Find item in database to get its price
+    local total, currency, mismatch = 0, nil, false
+    for name, qty in pairs(cart) do
         for _, item in ipairs(items) do
-            if item.name == itemName then
-                total = total + (item.priceQty * qty)
-                if not currency then
-                    currency = item.priceItem
-                elseif currency ~= item.priceItem then
-                    match = false
-                end
+            if item.name == name then
+                total = total + item.priceQty * qty
+                if not currency then currency = item.priceItem
+                elseif currency ~= item.priceItem then mismatch = true end
                 break
             end
         end
     end
-    
     priceQty = tostring(total)
-    if currency and match then
-        priceItem = currency
-    end
+    if currency and not mismatch then priceItem = currency end
 end
 
--- Clear Cart Function
 local function clearCart()
     cart = {}
     priceQty = "0"
     statusMsg = "Cart cleared"
 end
 
--- Draw utilities
-local function drawButton(x, y, width, height, text, bg, fg)
+-- ─────────────────────────────────────────
+-- Drawing helpers
+-- ─────────────────────────────────────────
+local function fill(x, y, width, bg)
+    term.setCursorPos(x, y)
+    term.setBackgroundColor(bg)
+    term.write(string.rep(" ", width))
+end
+
+local function label(x, y, txt, fg, bg)
+    term.setCursorPos(x, y)
+    term.setBackgroundColor(bg or colors.gray)
+    term.setTextColor(fg or colors.white)
+    term.write(txt)
+end
+
+-- Draw a 1-row themed button (LevelOS border style, layer 1)
+local function flatBtn(x, y, w2, text, bg, fg, selected)
+    local abg = selected and colors.lightGray or bg
+    local afg = selected and colors.black or fg
+    term.setCursorPos(x, y)
+    term.setBackgroundColor(abg)
+    term.setTextColor(afg)
+    local display = string.rep(" ", math.floor((w2 - #text) / 2)) .. text
+    display = display .. string.rep(" ", w2 - #display)
+    term.write(display:sub(1, w2))
+end
+
+-- Draw a thick "card" item button (2 lines high) like a POS tile
+local function itemBtn(x, y, bw, bh, name, price, isEdit, isSelected)
+    local bg = isEdit and colors.orange or (isSelected and colors.lightGray or colors.blue)
+    local fg = (isEdit or isSelected) and colors.black or colors.white
+    local subFg = isEdit and colors.black or colors.lightGray
     term.setBackgroundColor(bg)
     term.setTextColor(fg)
-    for i = 0, height - 1 do
-        term.setCursorPos(x, y + i)
-        term.write(string.rep(" ", width))
+    for row = 0, bh - 1 do
+        term.setCursorPos(x, y + row)
+        term.write(string.rep(" ", bw))
     end
-    local tx = x + math.floor((width - #text) / 2)
-    local ty = y + math.floor(height / 2)
-    term.setCursorPos(tx, ty)
-    term.write(text)
+    -- Name centred on line 1
+    local nameLine = clamp(name, bw)
+    term.setCursorPos(x + math.floor((bw - #nameLine) / 2), y)
+    term.setTextColor(fg)
+    term.write(nameLine)
+    -- Price on line 2
+    if bh >= 2 then
+        term.setCursorPos(x + 1, y + 1)
+        term.setTextColor(subFg)
+        term.write(clamp(price, bw - 2))
+    end
 end
 
-local function drawInputBox(x, y, width, label, val, active)
-    term.setCursorPos(x, y)
-    term.setBackgroundColor(bgCol)
+-- ─────────────────────────────────────────
+-- Menu bar (row 1, LevelOS style)
+-- ─────────────────────────────────────────
+local function drawMenuBar()
+    term.setCursorPos(1, 1)
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.white)
+    term.clearLine()
+    local cx = 1
+    for _, btn in ipairs(menuBtns) do
+        btn.x = cx
+        btn.w = #btn.label + 2
+        term.setCursorPos(cx, 1)
+        term.write(" " .. btn.label .. " ")
+        cx = cx + btn.w
+    end
+    -- App title right-side
+    local title = "Store Manager"
+    term.setCursorPos(w - #title, 1)
     term.setTextColor(colors.lightGray)
-    term.write(label)
-    
-    term.setCursorPos(x, y + 1)
-    if active then
-        term.setBackgroundColor(activeCol)
-        term.setTextColor(colors.white)
-    else
-        term.setBackgroundColor(inactiveCol)
-        term.setTextColor(colors.white)
-    end
-    
-    local displayVal = val
-    if #displayVal > width - 2 then
-        displayVal = displayVal:sub(#displayVal - width + 3)
-    end
-    term.write(" " .. displayVal .. string.rep(" ", width - #displayVal - 2) .. " ")
+    term.write(title)
+    -- Separator line (character 131)
+    term.setCursorPos(1, 2)
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.lightGray)
+    term.write(string.rep("\131", w))
 end
 
--- Render GUI
-local function drawUI()
-    -- Clear and draw base bg
-    term.setBackgroundColor(bgCol)
-    term.setTextColor(textCol)
-    term.clear()
-    
-    -- Border
+-- ─────────────────────────────────────────
+-- Left panel: Cart & Transaction fields
+-- ─────────────────────────────────────────
+local DIVX = 24   -- x position of vertical separator
+
+local function drawLeftPanel()
+    -- Background fill
+    for row = 3, h - 1 do
+        fill(1, row, DIVX - 1, colors.gray)
+    end
+
+    -- Section header
+    label(2, 3, "CART", colors.yellow, colors.gray)
+    -- Cart list
+    local cartList = {}
+    for n, q in pairs(cart) do table.insert(cartList, {n, q}) end
+    table.sort(cartList, function(a2, b2) return a2[1] < b2[1] end)
+
+    local maxRows = 5
+    for i = 1, maxRows do
+        local cy = 3 + i
+        if cartList[i] then
+            local entry = string.format("%dx %s", cartList[i][2], clamp(cartList[i][1], 16))
+            label(2, cy, entry, colors.white, colors.gray)
+        else
+            label(2, cy, string.rep(" ", DIVX - 2), colors.gray, colors.gray)
+        end
+    end
+    if #cartList == 0 then
+        label(2, 4, "(Cart is empty)", colors.lightGray, colors.gray)
+    end
+
+    -- Divider
+    term.setCursorPos(1, 9)
+    term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.lightGray)
-    lUtils.border(1, 1, w, h, nil, 3)
-    
-    -- Title Bar
-    drawButton(2, 2, w - 2, 1, " Store Manager POS", barCol, colors.white)
-    
-    -- Separator
-    for cy = 3, h - 2 do
-        term.setCursorPos(25, cy)
-        term.setBackgroundColor(bgCol)
+    term.write(string.rep("\140", DIVX - 1))
+
+    -- Seller / Buyer fields
+    local function inputRow(lbl, val, y, field)
+        label(2, y, lbl, colors.lightGray, colors.gray)
+        local active = activeField == field
+        term.setCursorPos(2, y + 1)
+        term.setBackgroundColor(active and colors.blue or colors.black)
+        term.setTextColor(colors.white)
+        local display = val
+        if #display > DIVX - 4 then display = display:sub(#display - (DIVX - 5)) end
+        term.write(" " .. display .. string.rep(" ", DIVX - 4 - #display) .. " ")
+    end
+
+    inputRow("By (Seller):", sellerName, 10, "seller")
+    inputRow("To (Buyer):", buyerName, 12, "buyer")
+
+    -- Price row
+    label(2, 14, "Price:", colors.lightGray, colors.gray)
+
+    -- Qty box
+    term.setCursorPos(2, 15)
+    term.setBackgroundColor(activeField == "priceQty" and colors.blue or colors.black)
+    term.setTextColor(colors.white)
+    local qd = priceQty
+    if #qd > 4 then qd = qd:sub(#qd - 3) end
+    term.write(" " .. qd .. string.rep(" ", 4 - #qd) .. " ")
+
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.lightGray)
+    term.write(" x ")
+
+    term.setBackgroundColor(activeField == "priceItem" and colors.blue or colors.black)
+    term.setTextColor(colors.white)
+    local cw = DIVX - 12
+    local cd = priceItem
+    if #cd > cw then cd = cd:sub(1, cw) end
+    term.write(" " .. cd .. string.rep(" ", cw - #cd) .. " ")
+
+    -- Divider
+    term.setCursorPos(1, 16)
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.lightGray)
+    term.write(string.rep("\140", DIVX - 1))
+
+    -- Action buttons: PRINT + CLEAR
+    local printBg = colors.lime
+    local clearBg = colors.red
+    local btnW = math.floor((DIVX - 3) / 2)
+
+    flatBtn(2, 17, btnW, "PRINT", printBg, colors.black)
+    flatBtn(2 + btnW + 1, 17, btnW, "CLEAR", clearBg, colors.white)
+
+    -- Vertical separator
+    for row = 3, h - 1 do
+        term.setCursorPos(DIVX, row)
+        term.setBackgroundColor(colors.gray)
         term.setTextColor(colors.lightGray)
         term.write("\149")
     end
-    
-    -- LEFT PANEL (Cart & Transaction Info)
-    term.setCursorPos(3, 4)
-    term.setBackgroundColor(bgCol)
-    term.setTextColor(colors.yellow)
-    term.write("CART ITEMS")
-    
-    -- Cart List
-    local cy = 5
-    local cartEmpty = true
-    -- Sort keys for consistent display
-    local sortedCart = {}
-    for name, qty in pairs(cart) do
-        table.insert(sortedCart, { name = name, qty = qty })
+end
+
+-- ─────────────────────────────────────────
+-- Right panel: Quick Items grid
+-- ─────────────────────────────────────────
+local GRID_X     = DIVX + 1
+local GRID_W     = 0  -- computed in drawRightPanel
+local BTN_W      = 0
+local BTN_H      = 2
+local BTN_GAP    = 1
+
+local function drawRightPanel()
+    GRID_W = w - DIVX
+    BTN_W  = math.floor((GRID_W - BTN_GAP * (ITEMS_PER_ROW + 1)) / ITEMS_PER_ROW)
+
+    -- Background
+    for row = 3, h - 1 do
+        fill(DIVX + 1, row, w - DIVX, colors.gray)
     end
-    table.sort(sortedCart, function(a, b) return a.name < b.name end)
-    
-    for i, entry in ipairs(sortedCart) do
-        if cy <= 9 then
-            term.setCursorPos(3, cy)
-            term.setBackgroundColor(bgCol)
-            term.setTextColor(textCol)
-            term.write(string.format("%dx %s", entry.qty, entry.name:sub(1, 18)))
-            cy = cy + 1
-            cartEmpty = false
+
+    -- Header row
+    label(DIVX + 2, 3, "QUICK ITEMS", colors.yellow, colors.gray)
+
+    local editLabel = editMode and "[ Edit: ON ]" or "[ Edit: OFF ]"
+    local editBg    = editMode and colors.orange or colors.gray
+    local editFg    = editMode and colors.black or colors.lightGray
+    local addLabel  = "+ Add Item"
+    local hdrRight  = w - #addLabel - 1
+
+    -- Add button (top-right of panel)
+    flatBtn(hdrRight, 3, #addLabel, addLabel, colors.blue, colors.white)
+
+    -- Edit mode toggle
+    flatBtn(DIVX + 2, 4, #editLabel, editLabel, editBg, editFg)
+
+    -- Draw grid
+    local startIdx = (page - 1) * ITEMS_PER_PAGE + 1
+    local row_y = 6
+    local col   = 0
+
+    for idx = startIdx, math.min(#items, page * ITEMS_PER_PAGE) do
+        local item   = items[idx]
+        local bx     = DIVX + 1 + BTN_GAP + col * (BTN_W + BTN_GAP)
+        local priceStr = string.format("%dx %s", item.priceQty, item.priceItem)
+        itemBtn(bx, row_y, BTN_W, BTN_H, item.name, priceStr, editMode, false)
+
+        col = col + 1
+        if col >= ITEMS_PER_ROW then
+            col = 0
+            row_y = row_y + BTN_H + 1
         end
     end
-    if cartEmpty then
-        term.setCursorPos(3, 5)
-        term.setBackgroundColor(bgCol)
-        term.setTextColor(colors.lightGray)
-        term.write("(Cart is empty)")
-    end
-    
-    -- Horizontal Line in left panel
-    term.setCursorPos(2, 10)
-    term.setBackgroundColor(bgCol)
+
+    -- Paging bar
+    local maxPage = math.max(1, math.ceil(#items / ITEMS_PER_PAGE))
+    local pageStr = string.format(" Page %d/%d ", page, maxPage)
+
+    term.setCursorPos(DIVX + 1, h - 1)
+    term.setBackgroundColor(colors.black)
     term.setTextColor(colors.lightGray)
-    term.write(string.rep("\140", 23))
-    
-    -- Input Fields
-    drawInputBox(3, 11, 21, "By (Seller):", sellerName, activeField == "seller")
-    drawInputBox(3, 13, 21, "To (Buyer):", buyerName, activeField == "buyer")
-    
-    -- Price qty/item input fields side by side
-    term.setCursorPos(3, 15)
-    term.setBackgroundColor(bgCol)
-    term.setTextColor(colors.lightGray)
-    term.write("Price Paid:")
-    
-    -- Price Amount
-    if activeField == "priceQty" then
-        term.setBackgroundColor(activeCol)
-    else
-        term.setBackgroundColor(inactiveCol)
-    end
-    term.setCursorPos(3, 16)
-    term.write(" " .. priceQty .. string.rep(" ", 4 - #priceQty) .. " ")
-    
-    term.setBackgroundColor(bgCol)
-    term.setTextColor(colors.lightGray)
-    term.write(" x ")
-    
-    -- Price Item
-    if activeField == "priceItem" then
-        term.setBackgroundColor(activeCol)
-    else
-        term.setBackgroundColor(inactiveCol)
-    end
-    term.setTextColor(colors.white)
-    local displayCurrency = priceItem
-    if #displayCurrency > 11 then displayCurrency = displayCurrency:sub(1, 11) end
-    term.write(" " .. displayCurrency .. string.rep(" ", 11 - #displayCurrency) .. " ")
-    
-    -- Left panel buttons
-    drawButton(3, 18, 12, 1, "[ PRINT ]", colors.lime, colors.black)
-    drawButton(16, 18, 8, 1, "[CLEAR]", colors.red, colors.white)
-    
-    -- RIGHT PANEL (Quick Items Grid)
-    term.setCursorPos(27, 4)
-    term.setBackgroundColor(bgCol)
-    term.setTextColor(colors.yellow)
-    term.write("QUICK ITEMS")
-    
-    -- [+ Add] button
-    drawButton(44, 4, 6, 1, "+ Add", colors.blue, colors.white)
-    
-    -- Grid display of quick items
-    local startIdx = (page - 1) * itemsPerPage + 1
-    local endIdx = math.min(#items, page * itemsPerPage)
-    
-    local gx, gy = 27, 6
-    for idx = startIdx, endIdx do
-        local item = items[idx]
-        local btnBg = editMode and colors.orange or colors.cyan
-        local btnFg = editMode and colors.black or colors.black
-        
-        -- Draw item block
-        term.setBackgroundColor(btnBg)
-        term.setTextColor(btnFg)
-        term.setCursorPos(gx, gy)
-        term.write(string.sub(item.name .. string.rep(" ", 11), 1, 11))
-        term.setCursorPos(gx, gy + 1)
-        term.write(string.sub(string.format("%dx %s", item.priceQty, item.priceItem) .. string.rep(" ", 11), 1, 11))
-        
-        -- Layout arithmetic
-        gx = gx + 12
-        if gx > 40 then
-            gx = 27
-            gy = gy + 3
-        end
-    end
-    
-    -- Paging buttons at bottom of grid
+    term.write(string.rep(" ", GRID_W))
+
     if page > 1 then
-        drawButton(27, 18, 6, 1, "<<", colors.lightGray, colors.black)
+        term.setCursorPos(DIVX + 1, h - 1)
+        term.setBackgroundColor(colors.lightGray)
+        term.setTextColor(colors.black)
+        term.write(" \17 ")
     end
-    term.setCursorPos(35, 18)
-    term.setBackgroundColor(bgCol)
-    term.setTextColor(textCol)
-    term.write(string.format("Page %d/%d", page, math.max(1, math.ceil(#items / itemsPerPage))))
-    if endIdx < #items then
-        drawButton(45, 18, 6, 1, ">>", colors.lightGray, colors.black)
+    if page < maxPage then
+        term.setCursorPos(w - 2, h - 1)
+        term.setBackgroundColor(colors.lightGray)
+        term.setTextColor(colors.black)
+        term.write(" \16 ")
     end
-    
-    -- Edit Mode toggle
-    local modeText = editMode and "Edit Mode: [ ON ]" or "Edit Mode: [ OFF ]"
-    local modeBg = editMode and colors.orange or colors.black
-    local modeFg = editMode and colors.black or colors.white
-    drawButton(27, 16, 23, 1, modeText, modeBg, modeFg)
-    
-    -- Draw Status Bar at very bottom
-    drawButton(2, h - 1, w - 2, 1, " " .. statusMsg, colors.black, colors.white)
-    
-    -- DRAW MODAL (if active)
-    if modal then
-        -- Backdrop shadow
-        term.setBackgroundColor(colors.black)
-        for my = 5, 15 do
-            term.setCursorPos(8, my)
-            term.write(string.rep(" ", 36))
+    term.setCursorPos(DIVX + 1 + math.floor((GRID_W - #pageStr) / 2), h - 1)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.lightGray)
+    term.write(pageStr)
+end
+
+-- ─────────────────────────────────────────
+-- Status bar (bottom row)
+-- ─────────────────────────────────────────
+local function drawStatusBar()
+    term.setCursorPos(1, h)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.lightGray)
+    term.write(string.rep(" ", w))
+    term.setCursorPos(1, h)
+    term.write(" " .. clamp(statusMsg, w - 2))
+end
+
+-- ─────────────────────────────────────────
+-- Full redraw
+-- ─────────────────────────────────────────
+local function drawUI()
+    term.setBackgroundColor(colors.gray)
+    term.clear()
+    drawMenuBar()
+    drawLeftPanel()
+    drawRightPanel()
+    drawStatusBar()
+end
+
+-- ─────────────────────────────────────────
+-- Grid hit-test: returns item index or nil
+-- ─────────────────────────────────────────
+local function getGridItem(cx, cy)
+    GRID_W = w - DIVX
+    BTN_W  = math.floor((GRID_W - BTN_GAP * (ITEMS_PER_ROW + 1)) / ITEMS_PER_ROW)
+    local startIdx = (page - 1) * ITEMS_PER_PAGE + 1
+    local row_y, col = 6, 0
+    for idx = startIdx, math.min(#items, page * ITEMS_PER_PAGE) do
+        local bx = DIVX + 1 + BTN_GAP + col * (BTN_W + BTN_GAP)
+        if cx >= bx and cx <= bx + BTN_W - 1 and cy >= row_y and cy <= row_y + BTN_H - 1 then
+            return idx
         end
-        
-        -- Modal Border & Window
-        term.setTextColor(colors.white)
-        lUtils.border(8, 5, 35, 11, nil, 3)
-        term.setBackgroundColor(colors.blue)
-        term.setTextColor(colors.white)
-        term.setCursorPos(9, 6)
-        term.write(string.rep(" ", 33))
-        term.setCursorPos(10, 6)
-        term.write(modal == "add" and "Add New Quick Item" or "Edit Quick Item")
-        
-        -- Draw close "X" in modal
-        term.setCursorPos(40, 6)
-        term.write("\215")
-        
-        -- Form Fields
-        drawInputBox(10, 8, 31, "Item Name:", modalItemName, modalActiveField == "name")
-        
-        -- Default Price quantity / item type
-        term.setCursorPos(10, 11)
-        term.setBackgroundColor(colors.black)
-        term.setTextColor(colors.lightGray)
-        term.write("Default Price:")
-        
-        -- Modal Qty Field
-        if modalActiveField == "qty" then
-            term.setBackgroundColor(activeCol)
+        col = col + 1
+        if col >= ITEMS_PER_ROW then col = 0; row_y = row_y + BTN_H + 1 end
+    end
+    return nil
+end
+
+-- ─────────────────────────────────────────
+-- Modal: Add / Edit item
+-- Fully draggable via lUtils.openWin
+-- ─────────────────────────────────────────
+local function showItemModal(existingItem, itemIdx)
+    local mTitle   = existingItem and "Edit Item" or "Add New Item"
+    local mName    = existingItem and existingItem.name    or ""
+    local mQty     = existingItem and tostring(existingItem.priceQty) or "1"
+    local mCur     = existingItem and existingItem.priceItem or "Diamond"
+    local mDeleted = false
+
+    local function modalFn()
+        local mw, mh = term.getSize()
+        local function redraw(activeF)
+            term.setBackgroundColor(colors.gray)
+            term.clear()
+            -- header area already drawn by openWin
+            -- Content
+            label(2, 2, "Item Name:", colors.lightGray, colors.gray)
+            term.setCursorPos(2, 3)
+            term.setBackgroundColor(activeF == "name" and colors.blue or colors.black)
+            term.setTextColor(colors.white)
+            term.write(" " .. clamp(mName, mw - 4) .. string.rep(" ", mw - 4 - math.min(#mName, mw - 4)) .. " ")
+
+            label(2, 5, "Default Price:", colors.lightGray, colors.gray)
+            -- Qty
+            term.setCursorPos(2, 6)
+            term.setBackgroundColor(activeF == "qty" and colors.blue or colors.black)
+            term.setTextColor(colors.white)
+            term.write(" " .. clamp(mQty, 5) .. string.rep(" ", 5 - math.min(#mQty, 5)) .. " ")
+            term.setBackgroundColor(colors.gray)
+            term.setTextColor(colors.lightGray)
+            term.write(" x ")
+            term.setBackgroundColor(activeF == "cur" and colors.blue or colors.black)
+            term.setTextColor(colors.white)
+            local cw2 = mw - 12
+            term.write(" " .. clamp(mCur, cw2) .. string.rep(" ", cw2 - math.min(#mCur, cw2)) .. " ")
+
+            -- Buttons
+            local saveBg = colors.lime
+            local y8 = mh - 2
+            flatBtn(2, y8, 8, "Save", saveBg, colors.black)
+            flatBtn(12, y8, 8, "Cancel", colors.gray, colors.white)
+            if existingItem then
+                flatBtn(22, y8, 8, "Delete", colors.red, colors.white)
+            end
+        end
+
+        local activeF = "name"
+        redraw(activeF)
+
+        while true do
+            local e = {os.pullEvent()}
+            if e[1] == "term_resize" then
+                mw, mh = term.getSize()
+                redraw(activeF)
+            elseif e[1] == "mouse_click" and e[2] == 1 then
+                local cx2, cy2 = e[3], e[4]
+                local y8 = mh - 2
+                if cy2 == 3 then
+                    activeF = "name"; redraw(activeF)
+                elseif cy2 == 6 and cx2 >= 2 and cx2 <= 8 then
+                    activeF = "qty"; redraw(activeF)
+                elseif cy2 == 6 and cx2 >= 12 then
+                    activeF = "cur"; redraw(activeF)
+                elseif cy2 == y8 then
+                    if cx2 >= 2 and cx2 <= 9 then
+                        -- Save
+                        local qty = tonumber(mQty)
+                        if #mName > 0 and qty and qty > 0 and #mCur > 0 then
+                            return "save", mName, qty, mCur
+                        end
+                    elseif cx2 >= 12 and cx2 <= 19 then
+                        return "cancel"
+                    elseif existingItem and cx2 >= 22 and cx2 <= 29 then
+                        return "delete"
+                    end
+                end
+            elseif e[1] == "char" then
+                if activeF == "name" then mName = mName .. e[2]
+                elseif activeF == "qty" and tonumber(e[2]) then mQty = mQty .. e[2]
+                elseif activeF == "cur" then mCur = mCur .. e[2]
+                end
+                redraw(activeF)
+            elseif e[1] == "key" then
+                if e[2] == keys.backspace then
+                    if activeF == "name" then mName = mName:sub(1, -2)
+                    elseif activeF == "qty" then mQty = mQty:sub(1, -2)
+                    elseif activeF == "cur" then mCur = mCur:sub(1, -2)
+                    end
+                    redraw(activeF)
+                elseif e[2] == keys.tab then
+                    if activeF == "name" then activeF = "qty"
+                    elseif activeF == "qty" then activeF = "cur"
+                    else activeF = "name" end
+                    redraw(activeF)
+                elseif e[2] == keys.enter then
+                    local qty = tonumber(mQty)
+                    if #mName > 0 and qty and qty > 0 and #mCur > 0 then
+                        return "save", mName, qty, mCur
+                    end
+                end
+            end
+        end
+    end
+
+    -- Calculate modal dimensions
+    local mw2, mh2 = 32, 11
+    local mx = math.floor((w - mw2) / 2)
+    local my = math.floor((h - mh2) / 2)
+
+    local result, rName, rQty, rCur = lUtils.openWin(mTitle, modalFn, mx, my, mw2, mh2, false, false)
+
+    drawUI()  -- restore screen
+
+    if result == "save" then
+        if existingItem then
+            items[itemIdx] = { name = rName, priceQty = rQty, priceItem = rCur }
+            statusMsg = "Updated: " .. rName
         else
-            term.setBackgroundColor(inactiveCol)
+            table.insert(items, { name = rName, priceQty = rQty, priceItem = rCur })
+            statusMsg = "Added: " .. rName
         end
-        term.setTextColor(colors.white)
-        term.setCursorPos(10, 12)
-        term.write(" " .. modalPriceQty .. string.rep(" ", 4 - #modalPriceQty) .. " ")
-        
-        term.setBackgroundColor(colors.black)
-        term.setTextColor(colors.lightGray)
-        term.write(" x ")
-        
-        -- Modal Currency/Item Field
-        if modalActiveField == "item" then
-            term.setBackgroundColor(activeCol)
-        else
-            term.setBackgroundColor(inactiveCol)
-        end
-        term.setTextColor(colors.white)
-        term.write(" " .. modalPriceItem .. string.rep(" ", 19 - #modalPriceItem) .. " ")
-        
-        -- Action Buttons
-        drawButton(10, 14, 10, 1, "Save", colors.green, colors.white)
-        drawButton(22, 14, 10, 1, "Cancel", colors.gray, colors.white)
-        if modal == "edit" then
-            drawButton(34, 14, 7, 1, "Delete", colors.red, colors.white)
-        end
+        saveDatabase()
+    elseif result == "delete" then
+        table.remove(items, itemIdx)
+        saveDatabase()
+        statusMsg = "Deleted item"
     end
 end
 
--- Add transaction receipt to log file
-local function saveReceipt()
-    local dateStr = os.date("%d/%m")
-    
-    -- Format receipt contents
-    local lines = {}
-    table.insert(lines, string.format("RECEIPT %s %s-%s", dateStr, sellerName, buyerName))
-    table.insert(lines, "")
-    table.insert(lines, "Sale of:")
-    table.insert(lines, "")
-    
-    -- List items in cart
-    local sortedCart = {}
-    for name, qty in pairs(cart) do
-        table.insert(sortedCart, { name = name, qty = qty })
+-- ─────────────────────────────────────────
+-- Modal: Merchant name edit
+-- ─────────────────────────────────────────
+local function showSettingsModal()
+    local mName  = config.merchantName
+    local function settingsFn()
+        local mw, mh = term.getSize()
+        local function redraw()
+            term.setBackgroundColor(colors.gray)
+            term.clear()
+            label(2, 2, "Merchant Name:", colors.lightGray, colors.gray)
+            term.setCursorPos(2, 3)
+            term.setBackgroundColor(colors.blue)
+            term.setTextColor(colors.white)
+            local d = clamp(mName, mw - 4)
+            term.write(" " .. d .. string.rep(" ", mw - 4 - #d) .. " ")
+            label(2, 5, "Press Enter or click Save", colors.lightGray, colors.gray)
+            flatBtn(2, mh - 2, 8, "Save", colors.lime, colors.black)
+            flatBtn(12, mh - 2, 8, "Cancel", colors.gray, colors.white)
+        end
+        redraw()
+        while true do
+            local e = {os.pullEvent()}
+            if e[1] == "char" then mName = mName .. e[2]; redraw()
+            elseif e[1] == "key" then
+                if e[2] == keys.backspace then mName = mName:sub(1, -2); redraw()
+                elseif e[2] == keys.enter then return "save", mName end
+            elseif e[1] == "mouse_click" and e[2] == 1 then
+                local mh2 = select(2, term.getSize())
+                if e[4] == mh2 - 2 then
+                    if e[3] >= 2 and e[3] <= 9 then return "save", mName
+                    elseif e[3] >= 12 and e[3] <= 19 then return "cancel" end
+                end
+            elseif e[1] == "term_resize" then redraw()
+            end
+        end
     end
-    table.sort(sortedCart, function(a, b) return a.name < b.name end)
-    
-    for _, entry in ipairs(sortedCart) do
-        table.insert(lines, string.format("%dx %s", entry.qty, entry.name))
+
+    local mw2, mh2 = 30, 9
+    local result, rName = lUtils.openWin("Store Settings", settingsFn, math.floor((w - mw2) / 2), math.floor((h - mh2) / 2), mw2, mh2, false, false)
+
+    drawUI()
+    if result == "save" and #rName > 0 then
+        config.merchantName = rName
+        sellerName = rName
+        saveConfig()
+        statusMsg = "Settings saved"
     end
-    table.insert(lines, "")
-    table.insert(lines, "By: " .. sellerName)
-    table.insert(lines, "To: " .. buyerName)
-    table.insert(lines, "Price:")
-    table.insert(lines, "")
-    table.insert(lines, string.format("%sx %s", priceQty, priceItem))
-    
-    local receiptText = table.concat(lines, "\n")
-    
-    -- Append to transactions file
-    local exists = fs.exists("transactions")
-    local f = fs.open("transactions", "a")
-    if not exists then
-        f.write("transactions:\n\n")
-    else
-        f.write("\n\n")
+end
+
+-- ─────────────────────────────────────────
+-- Tutorial modal (first run / File > Info)
+-- ─────────────────────────────────────────
+local function showTutorial()
+    local pages2 = {
+        {
+            title = "Welcome to Store Manager!",
+            text = {
+                "This app lets you quickly",
+                "build receipts and print them",
+                "using a visual POS interface.",
+                "",
+                "Navigation: Use the menu bar",
+                "at the top for File/Info.",
+            }
+        },
+        {
+            title = "Quick Items Grid",
+            text = {
+                "Click an item button to add",
+                "it to your cart.",
+                "",
+                "Toggle Edit Mode to change",
+                "prices or remove items.",
+                "",
+                "Click '+ Add Item' to create",
+                "a new button.",
+            }
+        },
+        {
+            title = "Cart & Receipt",
+            text = {
+                "Fill in Seller and Buyer.",
+                "The price auto-fills from",
+                "your item defaults.",
+                "",
+                "Click PRINT to save to the",
+                "/transactions file and send",
+                "to a connected printer.",
+            }
+        },
+        {
+            title = "Receipt Format",
+            text = {
+                "RECEIPT DD/MM NAME1-NAME2",
+                "",
+                "Sale of:",
+                "  Nx [item]",
+                "",
+                "By: NAME1 / To: NAME2",
+                "Price: Nx [currency]",
+            }
+        },
+    }
+
+    local pg = 1
+    local function tutFn()
+        local mw, mh = term.getSize()
+        local function redraw()
+            term.setBackgroundColor(colors.gray)
+            term.clear()
+            local p = pages2[pg]
+            -- Title
+            term.setCursorPos(1, 1)
+            term.setBackgroundColor(colors.blue)
+            term.setTextColor(colors.white)
+            term.write(string.rep(" ", mw))
+            local tx = math.floor((mw - #p.title) / 2) + 1
+            term.setCursorPos(tx, 1)
+            term.write(p.title)
+            -- Text body
+            for i, ln in ipairs(p.text) do
+                label(2, 2 + i, ln, colors.white, colors.gray)
+            end
+            -- Paging
+            local pageStr2 = pg .. "/" .. #pages2
+            label(mw - #pageStr2 - 1, mh - 2, pageStr2, colors.lightGray, colors.gray)
+            if pg > 1 then flatBtn(2, mh - 2, 8, "\17 Prev", colors.lightGray, colors.black) end
+            if pg < #pages2 then flatBtn(mw - 9, mh - 2, 9, "Next \16", colors.lightGray, colors.black) end
+            flatBtn(math.floor(mw / 2) - 4, mh - 2, 8, "Close", colors.gray, colors.white)
+        end
+        redraw()
+        while true do
+            local e = {os.pullEvent()}
+            if e[1] == "term_resize" then redraw()
+            elseif e[1] == "mouse_click" and e[2] == 1 then
+                local mw2, mh2 = term.getSize()
+                if e[4] == mh2 - 2 then
+                    if pg > 1 and e[3] >= 2 and e[3] <= 9 then pg = pg - 1; redraw()
+                    elseif pg < #pages2 and e[3] >= mw2 - 8 then pg = pg + 1; redraw()
+                    elseif e[3] >= math.floor(mw2 / 2) - 4 and e[3] <= math.floor(mw2 / 2) + 3 then return end
+                end
+            elseif e[1] == "key" and (e[2] == keys.enter or e[2] == keys.q) then return
+            end
+        end
     end
-    f.write(receiptText)
-    f.close()
-    
-    -- Print to peripheral printer if available
+
+    local mw3, mh3 = 38, 14
+    lUtils.openWin("How to Use Store Manager", tutFn, math.floor((w - mw3) / 2), math.floor((h - mh3) / 2), mw3, mh3, false, false)
+    drawUI()
+end
+
+-- ─────────────────────────────────────────
+-- Save receipt to /transactions + printer
+-- ─────────────────────────────────────────
+local function printReceipt()
+    local cartEmpty = true
+    for _ in pairs(cart) do cartEmpty = false break end
+    if cartEmpty then lUtils.popup("Store Manager", "Cart is empty!", 27, 7, {"OK"}); drawUI(); return end
+    if #sellerName == 0 or #buyerName == 0 then lUtils.popup("Store Manager", "Seller and Buyer names are required!", 32, 7, {"OK"}); drawUI(); return end
+
+    local dateStr = os.date and os.date("%d/%m") or "00/00"
+    local lines2 = {
+        string.format("RECEIPT %s %s-%s", dateStr, sellerName, buyerName),
+        "",
+        "Sale of:",
+        "",
+    }
+    local sorted = {}
+    for n, q in pairs(cart) do table.insert(sorted, {n, q}) end
+    table.sort(sorted, function(a2, b2) return a2[1] < b2[1] end)
+    for _, e2 in ipairs(sorted) do table.insert(lines2, string.format("%dx %s", e2[2], e2[1])) end
+    table.insert(lines2, "")
+    table.insert(lines2, "By: " .. sellerName)
+    table.insert(lines2, "To: " .. buyerName)
+    table.insert(lines2, "Price:")
+    table.insert(lines2, "")
+    table.insert(lines2, string.format("%sx %s", priceQty, priceItem))
+
+    -- Append to /transactions
+    local existingFile = fs.exists("transactions")
+    local tf = fs.open("transactions", "a")
+    if not existingFile then tf.write("transactions:\n\n") else tf.write("\n\n") end
+    tf.write(table.concat(lines2, "\n"))
+    tf.close()
+
+    -- Try printer
     local printed = false
     local printer = peripheral.find("printer")
     if printer then
-        local ok, err = pcall(function()
+        local ok = pcall(function()
             printer.newPage()
-            printer.write("Receipt - Store Manager POS")
-            local px, py = printer.getCursorPos()
-            printer.setCursorPos(1, py + 2)
-            for _, line in ipairs(lines) do
-                printer.write(line)
-                px, py = printer.getCursorPos()
-                printer.setCursorPos(1, py + 1)
+            printer.setPageTitle("Receipt - Store Manager")
+            for i, ln in ipairs(lines2) do
+                printer.setCursorPos(1, i)
+                printer.write(ln)
             end
             printer.endPage()
         end)
-        if ok then
-            printed = true
-        else
-            statusMsg = "Printer error: " .. tostring(err)
-        end
+        if ok then printed = true end
     end
-    
-    if printed then
-        lUtils.popup("Success", "Receipt saved and printed successfully!", 29, 9, {"OK"})
-        statusMsg = "Saved to transactions & Printed"
-    else
-        lUtils.popup("Success", "Receipt saved to transactions file!", 29, 9, {"OK"})
-        statusMsg = "Saved to transactions file"
-    end
-    
+
     clearCart()
+    if printed then
+        lUtils.popup("Store Manager", "Receipt saved and printed!", 29, 7, {"OK"})
+        statusMsg = "Receipt saved & printed"
+    else
+        lUtils.popup("Store Manager", "Receipt saved to /transactions", 31, 7, {"OK"})
+        statusMsg = "Receipt saved to /transactions"
+    end
+    drawUI()
 end
 
--- Event Handling
+-- ─────────────────────────────────────────
+-- Handle a menu button click
+-- ─────────────────────────────────────────
+local function handleMenu(btn)
+    local cy = 3
+    term.setCursorPos(btn.x, 1)
+    term.setBackgroundColor(colors.blue)
+    term.setTextColor(colors.white)
+    term.write(" " .. btn.label .. " ")
+
+    local ok, _, item = lUtils.clickmenu(btn.x, cy, 18, btn.options, true, nil, {bg = colors.gray, txt = colors.white, fg = colors.lightGray, selected = colors.blue})
+    drawMenuBar()
+    if not ok then return end
+
+    if item == "Quit" then
+        term.setBackgroundColor(colors.black)
+        term.clear()
+        term.setCursorPos(1, 1)
+        os.exit and os.exit() or error("quit", 0)
+    elseif item == "Save Settings" then
+        showSettingsModal()
+    elseif item == "How to Use" then
+        showTutorial()
+    end
+end
+
+-- ─────────────────────────────────────────
+-- Keyboard input routing
+-- ─────────────────────────────────────────
+local function handleChar(ch)
+    if activeField == "seller" then sellerName = sellerName .. ch
+    elseif activeField == "buyer" then buyerName = buyerName .. ch
+    elseif activeField == "priceQty" and tonumber(ch) then priceQty = priceQty .. ch
+    elseif activeField == "priceItem" then priceItem = priceItem .. ch
+    else return false end
+    return true
+end
+
+local function handleBackspace()
+    if activeField == "seller" then sellerName = sellerName:sub(1, -2)
+    elseif activeField == "buyer" then buyerName = buyerName:sub(1, -2)
+    elseif activeField == "priceQty" then priceQty = priceQty:sub(1, -2)
+    elseif activeField == "priceItem" then priceItem = priceItem:sub(1, -2)
+    else return false end
+    return true
+end
+
+local function handleTab()
+    local cycle = {"seller", "buyer", "priceQty", "priceItem"}
+    if not activeField then activeField = "seller"; return end
+    for i, f in ipairs(cycle) do
+        if f == activeField then activeField = cycle[i % #cycle + 1]; return end
+    end
+    activeField = "seller"
+end
+
+-- ─────────────────────────────────────────
+-- Boot sequence
+-- ─────────────────────────────────────────
+loadConfig()
 loadDatabase()
+sellerName = config.merchantName
+
 drawUI()
 
+-- Show tutorial on first run
+if config.firstRun then
+    config.firstRun = false
+    saveConfig()
+    showTutorial()
+end
+
+-- ─────────────────────────────────────────
+-- Main event loop
+-- ─────────────────────────────────────────
 while true do
     local e = {os.pullEvent()}
-    local eventName = e[1]
-    
-    if eventName == "term_resize" then
+
+    if e[1] == "term_resize" then
         w, h = term.getSize()
         drawUI()
-        
-    elseif eventName == "mouse_click" and e[2] == 1 then
-        local cx, cy = e[3], e[4]
-        
-        -- Modal Clicks
-        if modal then
-            -- Click on Modal close button
-            if cy == 6 and cx == 40 then
-                modal = nil
-                drawUI()
-            -- Input Field selection in modal
-            elseif cy >= 9 and cy <= 10 and cx >= 10 and cx <= 40 then
-                modalActiveField = "name"
-                drawUI()
-            elseif cy == 12 and cx >= 10 and cx <= 15 then
-                modalActiveField = "qty"
-                drawUI()
-            elseif cy == 12 and cx >= 19 and cx <= 39 then
-                modalActiveField = "item"
-                drawUI()
-            -- Action buttons in modal
-            elseif cy == 14 then
-                if cx >= 10 and cx <= 19 then -- Save
-                    if #modalItemName > 0 and tonumber(modalPriceQty) then
-                        if modal == "add" then
-                            table.insert(items, {
-                                name = modalItemName,
-                                priceQty = tonumber(modalPriceQty),
-                                priceItem = modalPriceItem
-                            })
-                            statusMsg = "Added item: " .. modalItemName
-                        else
-                            items[editItemIndex] = {
-                                name = modalItemName,
-                                priceQty = tonumber(modalPriceQty),
-                                priceItem = modalPriceItem
-                            }
-                            statusMsg = "Updated item: " .. modalItemName
-                        end
-                        saveDatabase()
-                        modal = nil
-                    else
-                        statusMsg = "Error: Invalid inputs"
-                    end
-                    drawUI()
-                elseif cx >= 22 and cx <= 31 then -- Cancel
-                    modal = nil
-                    drawUI()
-                elseif modal == "edit" and cx >= 34 and cx <= 40 then -- Delete
-                    table.remove(items, editItemIndex)
-                    saveDatabase()
-                    modal = nil
-                    statusMsg = "Deleted item"
-                    drawUI()
-                end
-            end
-            
-        else
-            -- Main Clicks
-            
-            -- Close button (Header top right)
-            if cy == 2 and cx >= w - 4 and cx <= w - 1 then
-                break
-            end
-            
-            -- Click on input boxes
-            if cy >= 11 and cy <= 12 and cx >= 3 and cx <= 23 then
-                activeField = "seller"
-                drawUI()
-            elseif cy >= 13 and cy <= 14 and cx >= 3 and cx <= 23 then
-                activeField = "buyer"
-                drawUI()
-            elseif cy == 16 and cx >= 3 and cx <= 8 then
-                activeField = "priceQty"
-                drawUI()
-            elseif cy == 16 and cx >= 12 and cx <= 23 then
-                activeField = "priceItem"
-                drawUI()
-            
-            -- Action buttons
-            elseif cy == 18 and cx >= 3 and cx <= 14 then -- PRINT
-                local cartEmpty = true
-                for _ in pairs(cart) do cartEmpty = false break end
-                
-                if cartEmpty then
-                    lUtils.popup("POS Error", "Cannot print an empty receipt!", 29, 9, {"OK"})
-                elseif #sellerName == 0 or #buyerName == 0 then
-                    lUtils.popup("POS Error", "Seller and Buyer names are required!", 29, 9, {"OK"})
-                else
-                    saveReceipt()
-                end
-                drawUI()
-            elseif cy == 18 and cx >= 16 and cx <= 23 then -- CLEAR
-                clearCart()
-                drawUI()
-                
-            -- Quick Items section
-            elseif cy == 4 and cx >= 44 and cx <= 49 then -- Add Quick Item
-                modal = "add"
-                modalItemName = ""
-                modalPriceQty = "1"
-                modalPriceItem = "Diamond"
-                modalActiveField = "name"
-                drawUI()
-            elseif cy == 16 and cx >= 27 and cx <= 49 then -- Edit Mode Toggle
-                editMode = not editMode
-                drawUI()
-            elseif cy == 18 and cx >= 27 and cx <= 32 then -- Prev Page
-                if page > 1 then
-                    page = page - 1
-                    drawUI()
-                end
-            elseif cy == 18 and cx >= 45 and cx <= 50 then -- Next Page
-                if page * itemsPerPage < #items then
-                    page = page + 1
-                    drawUI()
-                end
-            else
-                -- Click on Quick Items Grid
-                local startIdx = (page - 1) * itemsPerPage + 1
-                local endIdx = math.min(#items, page * itemsPerPage)
-                
-                local gx, gy = 27, 6
-                for idx = startIdx, endIdx do
-                    if cx >= gx and cx <= gx + 11 and cy >= gy and cy <= gy + 1 then
-                        if editMode then
-                            -- Edit Item Modal
-                            modal = "edit"
-                            editItemIndex = idx
-                            local item = items[idx]
-                            modalItemName = item.name
-                            modalPriceQty = tostring(item.priceQty)
-                            modalPriceItem = item.priceItem
-                            modalActiveField = "name"
-                        else
-                            -- Add item to cart
-                            local item = items[idx]
-                            cart[item.name] = (cart[item.name] or 0) + 1
-                            autoCalcPrice()
-                            statusMsg = "Added 1x " .. item.name
-                        end
-                        drawUI()
-                        break
-                    end
-                    
-                    gx = gx + 12
-                    if gx > 40 then
-                        gx = 27
-                        gy = gy + 3
-                    end
-                end
-            end
-        end
-        
-    elseif eventName == "char" then
-        local ch = e[2]
-        if modal then
-            if modalActiveField == "name" then
-                modalItemName = modalItemName .. ch
-                drawUI()
-            elseif modalActiveField == "qty" then
-                if tonumber(ch) then
-                    modalPriceQty = modalPriceQty .. ch
-                    drawUI()
-                end
-            elseif modalActiveField == "item" then
-                modalPriceItem = modalPriceItem .. ch
-                drawUI()
-            end
-        else
-            if activeField == "seller" then
-                sellerName = sellerName .. ch
-                drawUI()
-            elseif activeField == "buyer" then
-                buyerName = buyerName .. ch
-                drawUI()
-            elseif activeField == "priceQty" then
-                if tonumber(ch) then
-                    priceQty = priceQty .. ch
-                    drawUI()
-                end
-            elseif activeField == "priceItem" then
-                priceItem = priceItem .. ch
-                drawUI()
-            end
-        end
-        
-    elseif eventName == "key" then
+
+    elseif e[1] == "char" then
+        if handleChar(e[2]) then drawUI() end
+
+    elseif e[1] == "key" then
         local k = e[2]
         if k == keys.backspace then
-            if modal then
-                if modalActiveField == "name" then
-                    modalItemName = modalItemName:sub(1, #modalItemName - 1)
-                    drawUI()
-                elseif modalActiveField == "qty" then
-                    modalPriceQty = modalPriceQty:sub(1, #modalPriceQty - 1)
-                    drawUI()
-                elseif modalActiveField == "item" then
-                    modalPriceItem = modalPriceItem:sub(1, #modalPriceItem - 1)
-                    drawUI()
-                end
-            else
-                if activeField == "seller" then
-                    sellerName = sellerName:sub(1, #sellerName - 1)
-                    drawUI()
-                elseif activeField == "buyer" then
-                    buyerName = buyerName:sub(1, #buyerName - 1)
-                    drawUI()
-                elseif activeField == "priceQty" then
-                    priceQty = priceQty:sub(1, #priceQty - 1)
-                    drawUI()
-                elseif activeField == "priceItem" then
-                    priceItem = priceItem:sub(1, #priceItem - 1)
-                    drawUI()
-                end
-            end
-        elseif k == keys.enter then
-            if modal then
-                modalActiveField = nil
-                drawUI()
-            else
-                activeField = nil
-                drawUI()
-            end
+            if handleBackspace() then drawUI() end
         elseif k == keys.tab then
-            -- Tab cycling for fields
-            if modal then
-                if modalActiveField == "name" then
-                    modalActiveField = "qty"
-                elseif modalActiveField == "qty" then
-                    modalActiveField = "item"
-                else
-                    modalActiveField = "name"
-                end
-            else
-                if activeField == "seller" then
-                    activeField = "buyer"
-                elseif activeField == "buyer" then
-                    activeField = "priceQty"
-                elseif activeField == "priceQty" then
-                    activeField = "priceItem"
-                else
-                    activeField = "seller"
+            handleTab(); drawUI()
+        elseif k == keys.enter then
+            activeField = nil; drawUI()
+        end
+
+    elseif e[1] == "mouse_click" and e[2] == 1 then
+        local cx, cy = e[3], e[4]
+
+        -- ── Menu bar (row 1) ──
+        if cy == 1 then
+            for _, btn in ipairs(menuBtns) do
+                if cx >= btn.x and cx < btn.x + btn.w then
+                    handleMenu(btn)
+                    drawUI()
+                    break
                 end
             end
-            drawUI()
+
+        -- ── Left panel ──
+        elseif cx < DIVX then
+            -- Seller input
+            if cy == 11 then activeField = "seller"; drawUI()
+            -- Buyer input
+            elseif cy == 13 then activeField = "buyer"; drawUI()
+            -- Price Qty
+            elseif cy == 15 and cx >= 2 and cx <= 8 then activeField = "priceQty"; drawUI()
+            -- Price Item
+            elseif cy == 15 and cx >= 12 then activeField = "priceItem"; drawUI()
+            -- PRINT button
+            elseif cy == 17 then
+                local btnW = math.floor((DIVX - 3) / 2)
+                if cx >= 2 and cx < 2 + btnW then
+                    activeField = nil
+                    printReceipt()
+                -- CLEAR button
+                elseif cx >= 2 + btnW + 1 and cx < 2 + btnW + 1 + btnW then
+                    clearCart()
+                    autoCalcPrice()
+                    statusMsg = "Cart cleared"
+                    drawUI()
+                end
+            else
+                activeField = nil; drawUI()
+            end
+
+        -- ── Right panel ──
+        else
+            -- Add Item button (row 3, right side)
+            if cy == 3 then
+                local addLabel = "+ Add Item"
+                local hdrRight = w - #addLabel - 1
+                if cx >= hdrRight then
+                    showItemModal(nil, nil)
+                    drawUI()
+                end
+            -- Edit mode toggle (row 4)
+            elseif cy == 4 then
+                editMode = not editMode
+                statusMsg = editMode and "Edit Mode ON - click items to edit" or "Edit Mode OFF"
+                drawUI()
+            -- Paging row
+            elseif cy == h - 1 then
+                local maxPage = math.max(1, math.ceil(#items / ITEMS_PER_PAGE))
+                if cx <= DIVX + 3 and page > 1 then page = page - 1; drawUI()
+                elseif cx >= w - 2 and page < maxPage then page = page + 1; drawUI()
+                end
+            -- Grid click
+            else
+                local idx = getGridItem(cx, cy)
+                if idx then
+                    if editMode then
+                        showItemModal(items[idx], idx)
+                        drawUI()
+                    else
+                        local item = items[idx]
+                        cart[item.name] = (cart[item.name] or 0) + 1
+                        autoCalcPrice()
+                        statusMsg = "Added 1x " .. item.name
+                        drawUI()
+                    end
+                else
+                    activeField = nil; drawUI()
+                end
+            end
+        end
+
+    elseif e[1] == "mouse_scroll" then
+        local maxPage = math.max(1, math.ceil(#items / ITEMS_PER_PAGE))
+        if e[3] >= DIVX then
+            if e[2] == 1 and page < maxPage then page = page + 1; drawUI()
+            elseif e[2] == -1 and page > 1 then page = page - 1; drawUI()
+            end
         end
     end
 end
-
-term.setBackgroundColor(colors.black)
-term.setTextColor(colors.white)
-term.clear()
-term.setCursorPos(1, 1)
