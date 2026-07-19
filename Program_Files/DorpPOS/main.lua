@@ -1070,7 +1070,7 @@ do
         term.setCursorPos(1,1)
         lUtils.popup(
             "DorpPOS",
-            "No printer detected!\n\nDorpPOS needs a printer\nattached to work properly.\n\nPlease connect a printer and\nrelaunch the app.",
+            "No printer detected!\n\nPlease place the laptop next\nto a printer to connect it,\nor use a wired modem on the\nbottom when placed down.",
             36, 12, {"OK"}
         )
         return
