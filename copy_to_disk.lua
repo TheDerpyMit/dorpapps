@@ -54,10 +54,10 @@ local files = {
     ["Program_Files/Gelbooru/icon.bimg"] = "Gelbooru/icon.bimg",
     ["Program_Files/Gelbooru/taskbar.bimg"] = "Gelbooru/taskbar.bimg",
     ["Program_Files/Gelbooru/monrun.lua"] = "Gelbooru/monrun.lua",
-    -- Store Manager
-    ["Program_Files/StoreManager/main.lua"] = "StoreManager/main.lua",
-    ["Program_Files/StoreManager/icon.bimg"] = "StoreManager/icon.bimg",
-    ["Program_Files/StoreManager/taskbar.bimg"] = "StoreManager/taskbar.bimg",
+    -- DorpPOS
+    ["Program_Files/DorpPOS/main.lua"] = "DorpPOS/main.lua",
+    ["Program_Files/DorpPOS/icon.bimg"] = "DorpPOS/icon.bimg",
+    ["Program_Files/DorpPOS/taskbar.bimg"] = "DorpPOS/taskbar.bimg",
     -- Wallpaper
     ["desktop.nfp"] = "desktop.nfp"
 }
@@ -130,9 +130,9 @@ local files = {
     ["Gelbooru/icon.bimg"] = "Program_Files/Gelbooru/icon.bimg",
     ["Gelbooru/taskbar.bimg"] = "Program_Files/Gelbooru/taskbar.bimg",
     ["Gelbooru/monrun.lua"] = "Program_Files/Gelbooru/monrun.lua",
-    ["StoreManager/main.lua"] = "Program_Files/StoreManager/main.lua",
-    ["StoreManager/icon.bimg"] = "Program_Files/StoreManager/icon.bimg",
-    ["StoreManager/taskbar.bimg"] = "Program_Files/StoreManager/taskbar.bimg",
+    ["DorpPOS/main.lua"] = "Program_Files/DorpPOS/main.lua",
+    ["DorpPOS/icon.bimg"] = "Program_Files/DorpPOS/icon.bimg",
+    ["DorpPOS/taskbar.bimg"] = "Program_Files/DorpPOS/taskbar.bimg",
     ["desktop.nfp"] = "User/Images/desktop.nfp"
 }
 
@@ -232,12 +232,12 @@ f6.write('{ "Program_Files/Gelbooru/main.lua" }')
 f6.close()
 print("  Created Shortcut: " .. gelbooruLink)
 
--- Store Manager Link
-local storeManagerLink = fs.combine(desktopDir, "Store Manager.llnk")
-local f7 = fs.open(storeManagerLink, "w")
-f7.write('{ "Program_Files/StoreManager/main.lua" }')
+-- DorpPOS Link
+local dorpPOSLink = fs.combine(desktopDir, "DorpPOS.llnk")
+local f7 = fs.open(dorpPOSLink, "w")
+f7.write('{ "Program_Files/DorpPOS/main.lua" }')
 f7.close()
-print("  Created Shortcut: " .. storeManagerLink)
+print("  Created Shortcut: " .. dorpPOSLink)
 
 print("\nInstallation successful!")
 ]]

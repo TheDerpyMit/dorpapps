@@ -37,10 +37,10 @@ local downloads = {
     { url = github_base .. "Program_Files/Gelbooru/taskbar.bimg", dest = "Program_Files/Gelbooru/taskbar.bimg" },
     { url = github_base .. "Program_Files/Gelbooru/monrun.lua", dest = "Program_Files/Gelbooru/monrun.lua" },
     
-    -- Store Manager
-    { url = github_base .. "Program_Files/StoreManager/main.lua", dest = "Program_Files/StoreManager/main.lua" },
-    { url = github_base .. "Program_Files/StoreManager/icon.bimg", dest = "Program_Files/StoreManager/icon.bimg" },
-    { url = github_base .. "Program_Files/StoreManager/taskbar.bimg", dest = "Program_Files/StoreManager/taskbar.bimg" },
+    -- DorpPOS
+    { url = github_base .. "Program_Files/DorpPOS/main.lua", dest = "Program_Files/DorpPOS/main.lua" },
+    { url = github_base .. "Program_Files/DorpPOS/icon.bimg", dest = "Program_Files/DorpPOS/icon.bimg" },
+    { url = github_base .. "Program_Files/DorpPOS/taskbar.bimg", dest = "Program_Files/DorpPOS/taskbar.bimg" },
     
     -- Wallpaper
     { url = github_base .. "desktop.nfp", dest = "User/Images/desktop.nfp" }
@@ -106,7 +106,7 @@ local shortcuts = {
     { name = "Music.llnk", target = "Program_Files/Music/main.lua" },
     { name = "Updater.llnk", target = "Program_Files/Updater/main.lua" },
     { name = "Gelbooru.llnk", target = "Program_Files/Gelbooru/main.lua" },
-    { name = "Store Manager.llnk", target = "Program_Files/StoreManager/main.lua" }
+    { name = "DorpPOS.llnk", target = "Program_Files/DorpPOS/main.lua" }
 }
 
 for _, sc in ipairs(shortcuts) do

@@ -1,5 +1,5 @@
--- Program_Files/StoreManager/main.lua
--- Store Manager POS Application for LevelOS
+-- Program_Files/DorpPOS/main.lua
+-- DorpPOS Application for LevelOS
 -- A polished POS system following LevelOS UI conventions
 
 shell.run("LevelOS/startup/lUtils")
@@ -7,15 +7,19 @@ shell.run("LevelOS/startup/lUtils")
 -- ─────────────────────────────────────────
 -- Database & Persistence
 -- ─────────────────────────────────────────
-local dbPath      = "AppData/StoreManager/items.lconf"
-local configPath  = "AppData/StoreManager/config.lconf"
+local dbPath      = "AppData/DorpPOS/items.lconf"
+local configPath  = "AppData/DorpPOS/config.lconf"
 
 local items  = {}   -- { name, priceQty, priceItem }
 local config = { merchantName = "Merchant", firstRun = true }
 
 local function ensureDirs()
     if not fs.exists("AppData") then fs.makeDir("AppData") end
-    if not fs.exists("AppData/StoreManager") then fs.makeDir("AppData/StoreManager") end
+    -- Migrate old data if present
+    if fs.exists("AppData/StoreManager") and not fs.exists("AppData/DorpPOS") then
+        fs.copy("AppData/StoreManager", "AppData/DorpPOS")
+    end
+    if not fs.exists("AppData/DorpPOS") then fs.makeDir("AppData/DorpPOS") end
 end
 
 local function loadDatabase()
@@ -186,7 +190,7 @@ local function drawMenuBar()
         cx = cx + btn.w
     end
     -- App title right-side
-    local title = "Store Manager"
+    local title = "DorpPOS"
     term.setCursorPos(w - #title, 1)
     term.setTextColor(colors.lightGray)
     term.write(title)
@@ -627,7 +631,7 @@ end
 local function showTutorial()
     local pages2 = {
         {
-            title = "Welcome to Store Manager!",
+            title = "Welcome to DorpPOS!",
             text = {
                 "This app lets you quickly",
                 "build receipts and print them",
@@ -738,7 +742,7 @@ local function showTutorial()
     end
 
     local mw3, mh3 = 38, 14
-    lUtils.openWin("How to Use Store Manager", tutFn, math.floor((w - mw3) / 2), math.floor((h - mh3) / 2), mw3, mh3, false, false)
+    lUtils.openWin("How to Use DorpPOS", tutFn, math.floor((w - mw3) / 2), math.floor((h - mh3) / 2), mw3, mh3, false, false)
     drawUI()
 end
 
@@ -748,8 +752,8 @@ end
 local function printReceipt()
     local cartEmpty = true
     for _ in pairs(cart) do cartEmpty = false break end
-    if cartEmpty then lUtils.popup("Store Manager", "Cart is empty!", 27, 7, {"OK"}); drawUI(); return end
-    if #sellerName == 0 or #buyerName == 0 then lUtils.popup("Store Manager", "Seller and Buyer names are required!", 32, 7, {"OK"}); drawUI(); return end
+    if cartEmpty then lUtils.popup("DorpPOS", "Cart is empty!", 27, 7, {"OK"}); drawUI(); return end
+    if #sellerName == 0 or #buyerName == 0 then lUtils.popup("DorpPOS", "Seller and Buyer names are required!", 32, 7, {"OK"}); drawUI(); return end
 
     local dateStr = os.date and os.date("%d/%m") or "00/00"
     local lines2 = {
@@ -768,6 +772,9 @@ local function printReceipt()
     table.insert(lines2, "Price:")
     table.insert(lines2, "")
     table.insert(lines2, string.format("%sx %s", priceQty, priceItem))
+    table.insert(lines2, "")
+    table.insert(lines2, "Thank you for your purchase")
+    table.insert(lines2, "Powered by DorpPOS")
 
     -- Append to /transactions
     local existingFile = fs.exists("transactions")
@@ -776,16 +783,26 @@ local function printReceipt()
     tf.write(table.concat(lines2, "\n"))
     tf.close()
 
-    -- Try printer
+    -- Try printer with proper word-wrapping and paging
     local printed = false
     local printer = peripheral.find("printer")
     if printer then
         local ok = pcall(function()
             printer.newPage()
-            printer.setPageTitle("Receipt - Store Manager")
-            for i, ln in ipairs(lines2) do
-                printer.setCursorPos(1, i)
-                printer.write(ln)
+            printer.setPageTitle("Receipt - DorpPOS")
+            local y = 1
+            for _, line in ipairs(lines2) do
+                local wrapped = lUtils.wordwrap(line, 25)
+                for _, wl in ipairs(#wrapped > 0 and wrapped or {""}) do
+                    if y > 21 then
+                        printer.endPage()
+                        printer.newPage()
+                        y = 1
+                    end
+                    printer.setCursorPos(1, y)
+                    printer.write(wl)
+                    y = y + 1
+                end
             end
             printer.endPage()
         end)
@@ -794,10 +811,10 @@ local function printReceipt()
 
     clearCart()
     if printed then
-        lUtils.popup("Store Manager", "Receipt saved and printed!", 29, 7, {"OK"})
+        lUtils.popup("DorpPOS", "Receipt saved and printed!", 29, 7, {"OK"})
         statusMsg = "Receipt saved & printed"
     else
-        lUtils.popup("Store Manager", "Receipt saved to /transactions", 31, 7, {"OK"})
+        lUtils.popup("DorpPOS", "Receipt saved to /transactions", 31, 7, {"OK"})
         statusMsg = "Receipt saved to /transactions"
     end
     drawUI()
@@ -871,8 +888,8 @@ do
         term.clear()
         term.setCursorPos(1,1)
         lUtils.popup(
-            "Store Manager",
-            "No printer detected!\n\nStore Manager needs a printer\nattached to work properly.\n\nPlease connect a printer and\nrelaunch the app.",
+            "DorpPOS",
+            "No printer detected!\n\nDorpPOS needs a printer\nattached to work properly.\n\nPlease connect a printer and\nrelaunch the app.",
             36, 12, {"OK"}
         )
         return
