@@ -117,5 +117,83 @@ for _, sc in ipairs(shortcuts) do
     print("  Created Shortcut: " .. linkPath)
 end
 
+-- Modify LevelOS core files (Changelogs & Login screen description)
+print("  Applying DorpOS branding modifications...")
+
+-- 1. Modify changelogs
+for _, path in ipairs({"LevelOS/data/changelog.lconf", "LevelOS/data/nativelog.lconf"}) do
+    if fs.exists(path) then
+        local f = fs.open(path, "r")
+        local data = textutils.unserialize(f.readAll() or "")
+        f.close()
+        if type(data) == "table" then
+            local alreadyDone = false
+            for _, entry in ipairs(data) do
+                if entry.version == "DorpOS" or entry.description == "Modified with dorpapps by Mit" then
+                    alreadyDone = true
+                    break
+                end
+            end
+            if not alreadyDone then
+                table.insert(data, {
+                    date = os.date and os.date("%d-%m-%Y") or "19-07-2026",
+                    version = "DorpOS",
+                    description = "Modified with dorpapps by Mit",
+                    added = {
+                        "DorpPOS app installed",
+                        "Gelbooru app installed",
+                        "DorpChat integrated",
+                        "Music shortcuts set up",
+                    },
+                    fixed = {
+                        "Integrated all custom dorpapps cleanly",
+                    }
+                })
+                local f2 = fs.open(path, "w")
+                f2.write(textutils.serialize(data))
+                f2.close()
+                print("    Updated changelog: " .. path)
+            end
+        end
+    end
+end
+
+-- 2. Modify Login_screen.sgui
+local loginScreenPath = "LevelOS/Login_screen.sgui"
+if fs.exists(loginScreenPath) then
+    local f = fs.open(loginScreenPath, "r")
+    local content = f.readAll()
+    f.close()
+    
+    local replacement = "This version of LevelOS is heavily modified to suit the DorpSMP needs."
+    local modified = false
+    
+    -- Target standard text
+    local target1 = "The ultimate multitasking OS. With LevelOS, you can accomplish anything."
+    local target2 = "The ultimate multitasking os.. crap"
+    
+    if content:find(target1, 1, true) then
+        content = content:gsub(target1, replacement)
+        modified = true
+    elseif content:find(target2, 1, true) then
+        content = content:gsub(target2, replacement)
+        modified = true
+    else
+        -- Broad match pattern fallback
+        local pattern = "The ultimate multitasking[^\"\\]+"
+        if content:find(pattern) then
+            content = content:gsub(pattern, replacement)
+            modified = true
+        end
+    end
+    
+    if modified then
+        local f2 = fs.open(loginScreenPath, "w")
+        f2.write(content)
+        f2.close()
+        print("    Updated login screen description")
+    end
+end
+
 print("\nInstallation complete!")
 print("Restart LevelOS or check your Desktop to see the new apps!")
