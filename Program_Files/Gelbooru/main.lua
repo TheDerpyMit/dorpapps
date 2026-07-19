@@ -1,3 +1,20 @@
+local tArgs = {...}
+if tArgs[1] ~= "load" then
+    local dgpu = peripheral.find("directgpu")
+    local monitor = peripheral.find("monitor")
+    local bottomModem = (peripheral.getType("bottom") == "modem")
+    
+    if not dgpu or not monitor or not bottomModem then
+        if not _G.lUtils then shell.run("LevelOS/startup/lUtils") end
+        _G.lUtils.popup(
+            "Gelbooru Error",
+            "Hardware missing!\n\nThis app requires a directgpu\nand a monitor connected via a\nwired modem on the bottom side.",
+            34, 11, {"OK"}
+        )
+        return
+    end
+end
+
 local assets = {
   setinput = {
     content = "local s = shapescape.getSlide()\
