@@ -54,6 +54,10 @@ local files = {
     ["Program_Files/Gelbooru/icon.bimg"] = "Gelbooru/icon.bimg",
     ["Program_Files/Gelbooru/taskbar.bimg"] = "Gelbooru/taskbar.bimg",
     ["Program_Files/Gelbooru/monrun.lua"] = "Gelbooru/monrun.lua",
+    -- Store Manager
+    ["Program_Files/StoreManager/main.lua"] = "StoreManager/main.lua",
+    ["Program_Files/StoreManager/icon.bimg"] = "StoreManager/icon.bimg",
+    ["Program_Files/StoreManager/taskbar.bimg"] = "StoreManager/taskbar.bimg",
     -- Wallpaper
     ["desktop.nfp"] = "desktop.nfp"
 }
@@ -126,6 +130,9 @@ local files = {
     ["Gelbooru/icon.bimg"] = "Program_Files/Gelbooru/icon.bimg",
     ["Gelbooru/taskbar.bimg"] = "Program_Files/Gelbooru/taskbar.bimg",
     ["Gelbooru/monrun.lua"] = "Program_Files/Gelbooru/monrun.lua",
+    ["StoreManager/main.lua"] = "Program_Files/StoreManager/main.lua",
+    ["StoreManager/icon.bimg"] = "Program_Files/StoreManager/icon.bimg",
+    ["StoreManager/taskbar.bimg"] = "Program_Files/StoreManager/taskbar.bimg",
     ["desktop.nfp"] = "User/Images/desktop.nfp"
 }
 
@@ -224,6 +231,13 @@ local f6 = fs.open(gelbooruLink, "w")
 f6.write('{ "Program_Files/Gelbooru/main.lua" }')
 f6.close()
 print("  Created Shortcut: " .. gelbooruLink)
+
+-- Store Manager Link
+local storeManagerLink = fs.combine(desktopDir, "Store Manager.llnk")
+local f7 = fs.open(storeManagerLink, "w")
+f7.write('{ "Program_Files/StoreManager/main.lua" }')
+f7.close()
+print("  Created Shortcut: " .. storeManagerLink)
 
 print("\nInstallation successful!")
 ]]
