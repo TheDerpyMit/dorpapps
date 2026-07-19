@@ -96,28 +96,38 @@ local function clamp(s, maxLen)
     return s
 end
 
+local priceOverridden = false
+
 -- ─────────────────────────────────────────
 -- Auto price calculation from cart
 -- ─────────────────────────────────────────
 local function autoCalcPrice()
-    local total, currency, mismatch = 0, nil, false
+    if priceOverridden then return end
+    
+    local totals = {}
+    local firstCurrency = nil
     for name, qty in pairs(cart) do
         for _, item in ipairs(items) do
             if item.name == name then
-                total = total + item.priceQty * qty
-                if not currency then currency = item.priceItem
-                elseif currency ~= item.priceItem then mismatch = true end
+                totals[item.priceItem] = (totals[item.priceItem] or 0) + item.priceQty * qty
+                if not firstCurrency then firstCurrency = item.priceItem end
                 break
             end
         end
     end
-    priceQty = tostring(total)
-    if currency and not mismatch then priceItem = currency end
+    
+    if firstCurrency then
+        priceItem = firstCurrency
+        priceQty = tostring(totals[firstCurrency] or 0)
+    else
+        priceQty = "0"
+    end
 end
 
 local function clearCart()
     cart = {}
     priceQty = "0"
+    priceOverridden = false
     statusMsg = "Cart cleared"
 end
 
@@ -746,9 +756,6 @@ local function showTutorial()
     drawUI()
 end
 
--- ─────────────────────────────────────────
--- Save receipt to /transactions + printer
--- ─────────────────────────────────────────
 local function printReceipt()
     local cartEmpty = true
     for _ in pairs(cart) do cartEmpty = false break end
@@ -757,24 +764,55 @@ local function printReceipt()
 
     local dateStr = os.date and os.date("%d/%m") or "00/00"
     local lines2 = {
+        "-------------------------",
         string.format("RECEIPT %s %s-%s", dateStr, sellerName, buyerName),
-        "",
+        "-------------------------",
         "Sale of:",
         "",
     }
+    
     local sorted = {}
     for n, q in pairs(cart) do table.insert(sorted, {n, q}) end
     table.sort(sorted, function(a2, b2) return a2[1] < b2[1] end)
     for _, e2 in ipairs(sorted) do table.insert(lines2, string.format("%dx %s", e2[2], e2[1])) end
+    
     table.insert(lines2, "")
     table.insert(lines2, "By: " .. sellerName)
     table.insert(lines2, "To: " .. buyerName)
     table.insert(lines2, "Price:")
     table.insert(lines2, "")
-    table.insert(lines2, string.format("%sx %s", priceQty, priceItem))
-    table.insert(lines2, "")
+    
+    if priceOverridden then
+        table.insert(lines2, string.format("%sx %s", priceQty, priceItem))
+    else
+        -- Compute multi-currency totals
+        local totals = {}
+        local order = {}
+        for name, qty in pairs(cart) do
+            for _, item in ipairs(items) do
+                if item.name == name then
+                    if not totals[item.priceItem] then
+                        table.insert(order, item.priceItem)
+                    end
+                    totals[item.priceItem] = (totals[item.priceItem] or 0) + item.priceQty * qty
+                    break
+                end
+            end
+        end
+        table.sort(order)
+        if #order == 0 then
+            table.insert(lines2, "0x " .. priceItem)
+        else
+            for _, cur in ipairs(order) do
+                table.insert(lines2, string.format("%dx %s", totals[cur], cur))
+            end
+        end
+    end
+    
+    table.insert(lines2, "-------------------------")
     table.insert(lines2, "Thank you for your purchase")
     table.insert(lines2, "Powered by DorpPOS")
+    table.insert(lines2, "-------------------------")
 
     -- Append to /transactions
     local existingFile = fs.exists("transactions")
@@ -847,8 +885,12 @@ end
 local function handleChar(ch)
     if activeField == "seller" then sellerName = sellerName .. ch
     elseif activeField == "buyer" then buyerName = buyerName .. ch
-    elseif activeField == "priceQty" and tonumber(ch) then priceQty = priceQty .. ch
-    elseif activeField == "priceItem" then priceItem = priceItem .. ch
+    elseif activeField == "priceQty" and tonumber(ch) then 
+        priceQty = priceQty .. ch
+        priceOverridden = true
+    elseif activeField == "priceItem" then 
+        priceItem = priceItem .. ch
+        priceOverridden = true
     else return false end
     return true
 end
@@ -856,8 +898,12 @@ end
 local function handleBackspace()
     if activeField == "seller" then sellerName = sellerName:sub(1, -2)
     elseif activeField == "buyer" then buyerName = buyerName:sub(1, -2)
-    elseif activeField == "priceQty" then priceQty = priceQty:sub(1, -2)
-    elseif activeField == "priceItem" then priceItem = priceItem:sub(1, -2)
+    elseif activeField == "priceQty" then 
+        priceQty = priceQty:sub(1, -2)
+        priceOverridden = true
+    elseif activeField == "priceItem" then 
+        priceItem = priceItem:sub(1, -2)
+        priceOverridden = true
     else return false end
     return true
 end
