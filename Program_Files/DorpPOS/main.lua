@@ -73,7 +73,8 @@ local sellerName    = ""
 local buyerName     = ""
 local priceQty      = "0"
 local priceItem     = "Diamond"
-local activeField   = nil  -- "seller"|"buyer"|"priceQty"|"priceItem"
+local activeField   = nil  -- "seller"|"buyer"
+local priceScroll   = 1
 local editMode      = false
 local page          = 1
 local ITEMS_PER_ROW = 2
@@ -247,53 +248,107 @@ local function drawLeftPanel()
     term.setTextColor(colors.lightGray)
     term.write(string.rep("\140", DIVX - 1))
 
-    -- Seller / Buyer fields
-    local function inputRow(lbl, val, y, field)
-        label(2, y, lbl, colors.lightGray, colors.gray)
-        local active = activeField == field
-        term.setCursorPos(2, y + 1)
-        term.setBackgroundColor(active and colors.blue or colors.black)
-        term.setTextColor(colors.white)
-        local display = val
-        if #display > DIVX - 4 then display = display:sub(#display - (DIVX - 5)) end
-        term.write(" " .. display .. string.rep(" ", DIVX - 4 - #display) .. " ")
-    end
-
-    inputRow("By (Seller):", sellerName, 10, "seller")
-    inputRow("To (Buyer):", buyerName, 12, "buyer")
-
-    -- Price row
-    label(2, 14, "Price:", colors.lightGray, colors.gray)
-
-    -- Qty box
-    term.setCursorPos(2, 15)
-    term.setBackgroundColor(activeField == "priceQty" and colors.blue or colors.black)
+    -- Seller field (row 10)
+    label(2, 10, "By: ", colors.lightGray, colors.gray)
+    local activeS = activeField == "seller"
+    term.setCursorPos(6, 10)
+    term.setBackgroundColor(activeS and colors.blue or colors.black)
     term.setTextColor(colors.white)
-    local qd = priceQty
-    if #qd > 4 then qd = qd:sub(#qd - 3) end
-    term.write(" " .. qd .. string.rep(" ", 4 - #qd) .. " ")
+    local dispS = sellerName
+    local sW = DIVX - 8
+    if #dispS > sW then dispS = dispS:sub(#dispS - (sW - 1)) end
+    term.write(" " .. dispS .. string.rep(" ", sW - #dispS) .. " ")
 
-    term.setBackgroundColor(colors.gray)
-    term.setTextColor(colors.lightGray)
-    term.write(" x ")
-
-    term.setBackgroundColor(activeField == "priceItem" and colors.blue or colors.black)
+    -- Buyer field (row 11)
+    label(2, 11, "To: ", colors.lightGray, colors.gray)
+    local activeB = activeField == "buyer"
+    term.setCursorPos(6, 11)
+    term.setBackgroundColor(activeB and colors.blue or colors.black)
     term.setTextColor(colors.white)
-    local cw = DIVX - 12
-    local cd = priceItem
-    if #cd > cw then cd = cd:sub(1, cw) end
-    term.write(" " .. cd .. string.rep(" ", cw - #cd) .. " ")
+    local dispB = buyerName
+    if #dispB > sW then dispB = dispB:sub(#dispB - (sW - 1)) end
+    term.write(" " .. dispB .. string.rep(" ", sW - #dispB) .. " ")
 
     -- Divider
-    term.setCursorPos(1, 16)
+    term.setCursorPos(1, 12)
     term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.lightGray)
     term.write(string.rep("\140", DIVX - 1))
 
-    -- Action buttons: PRINT + CLEAR
+    -- Price row header (row 13)
+    label(2, 13, "PRICE:", colors.yellow, colors.gray)
+    local editBg = priceOverridden and colors.orange or colors.blue
+    local editFg = priceOverridden and colors.black or colors.white
+    flatBtn(DIVX - 8, 13, 6, "Edit", editBg, editFg)
+
+    -- Dynamic Price list (scrollable, rows 14 to h - 4)
+    local startY = 14
+    local endY = h - 4
+    local maxPriceLines = endY - startY + 1
+
+    local priceLines = {}
+    if priceOverridden then
+        table.insert(priceLines, string.format("%sx %s", priceQty, priceItem))
+    else
+        local totals = {}
+        local order = {}
+        for name, qty in pairs(cart) do
+            for _, item in ipairs(items) do
+                if item.name == name then
+                    if not totals[item.priceItem] then
+                        table.insert(order, item.priceItem)
+                    end
+                    totals[item.priceItem] = (totals[item.priceItem] or 0) + item.priceQty * qty
+                    break
+                end
+            end
+        end
+        table.sort(order)
+        if #order == 0 then
+            table.insert(priceLines, "0x " .. priceItem)
+        else
+            for _, cur in ipairs(order) do
+                table.insert(priceLines, string.format("%dx %s", totals[cur], cur))
+            end
+        end
+    end
+
+    -- Clamp scroll state
+    if priceScroll < 1 then priceScroll = 1 end
+    if priceScroll > #priceLines - maxPriceLines + 1 then
+        priceScroll = math.max(1, #priceLines - maxPriceLines + 1)
+    end
+
+    for i = 1, maxPriceLines do
+        local lineY = startY + i - 1
+        local idx = priceScroll + i - 1
+        if priceLines[idx] then
+            label(2, lineY, clamp(priceLines[idx], DIVX - 3), colors.white, colors.gray)
+        else
+            label(2, lineY, string.rep(" ", DIVX - 3), colors.gray, colors.gray)
+        end
+    end
+
+    -- Draw scroll indicator or paging if there are more than maxPriceLines
+    if #priceLines > maxPriceLines then
+        if priceScroll > 1 then
+            label(DIVX - 2, startY, "\24", colors.yellow, colors.gray)
+        end
+        if priceScroll + maxPriceLines - 1 < #priceLines then
+            label(DIVX - 2, endY, "\25", colors.yellow, colors.gray)
+        end
+    end
+
+    -- Divider at h - 3
+    term.setCursorPos(1, h - 3)
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.lightGray)
+    term.write(string.rep("\140", DIVX - 1))
+
+    -- Action buttons: PRINT + CLEAR at h - 2
     local btnW = math.floor((DIVX - 3) / 2)
-    flatBtn(2, 17, btnW, "PRINT", colors.lime, colors.black)
-    flatBtn(2 + btnW + 1, 17, btnW, "CLEAR", colors.red, colors.white)
+    flatBtn(2, h - 2, btnW, "PRINT", colors.lime, colors.black)
+    flatBtn(2 + btnW + 1, h - 2, btnW, "CLEAR", colors.red, colors.white)
 
     -- Raised border around left panel (black outer bg makes this pop)
     term.setBackgroundColor(colors.gray)
@@ -440,6 +495,85 @@ local function getGridItem(cx, cy)
         if col >= ITEMS_PER_ROW then col = 0; row_y = row_y + BTN_H + 1 end
     end
     return nil
+end
+
+-- ─────────────────────────────────────────
+-- Modal: Custom Price editor
+-- ─────────────────────────────────────────
+local function showPriceEditModal()
+    local mQty = priceQty
+    local mItem = priceItem
+    local function priceEditFn()
+        local mw, mh = term.getSize()
+        local function redraw(activeF)
+            term.setBackgroundColor(colors.lightGray)
+            term.clear()
+            term.setTextColor(colors.black)
+            lUtils.border(1, 1, mw, mh, nil, 3)
+            
+            label(2, 2, "Custom Quantity:", colors.black, colors.lightGray)
+            term.setCursorPos(2, 3)
+            term.setBackgroundColor(activeF == "qty" and colors.blue or colors.white)
+            term.setTextColor(activeF == "qty" and colors.white or colors.black)
+            term.write(" " .. clamp(mQty, mw - 4) .. string.rep(" ", mw - 4 - #mQty) .. " ")
+            
+            label(2, 5, "Custom Currency:", colors.black, colors.lightGray)
+            term.setCursorPos(2, 6)
+            term.setBackgroundColor(activeF == "item" and colors.blue or colors.white)
+            term.setTextColor(activeF == "item" and colors.white or colors.black)
+            term.write(" " .. clamp(mItem, mw - 4) .. string.rep(" ", mw - 4 - #mItem) .. " ")
+            
+            flatBtn(2, mh - 2, 8, "Save", colors.lime, colors.black)
+            flatBtn(12, mh - 2, 8, "Cancel", colors.gray, colors.white)
+            if priceOverridden then
+                flatBtn(22, mh - 2, 8, "Reset", colors.red, colors.white)
+            end
+        end
+        local activeF = "qty"
+        redraw(activeF)
+        while true do
+            local e = {os.pullEvent()}
+            if e[1] == "mouse_click" and e[2] == 1 then
+                local cx2, cy2 = e[3], e[4]
+                if cy2 == 3 then activeF = "qty"; redraw(activeF)
+                elseif cy2 == 6 then activeF = "item"; redraw(activeF)
+                elseif cy2 == mh - 2 then
+                    if cx2 >= 2 and cx2 <= 9 then return "save", mQty, mItem
+                    elseif cx2 >= 12 and cx2 <= 19 then return "cancel"
+                    elseif priceOverridden and cx2 >= 22 and cx2 <= 29 then return "reset" end
+                end
+            elseif e[1] == "char" then
+                if activeF == "qty" and tonumber(e[2]) then mQty = mQty .. e[2]
+                elseif activeF == "item" then mItem = mItem .. e[2] end
+                redraw(activeF)
+            elseif e[1] == "key" then
+                if e[2] == keys.backspace then
+                    if activeF == "qty" then mQty = mQty:sub(1, -2)
+                    elseif activeF == "item" then mItem = mItem:sub(1, -2) end
+                    redraw(activeF)
+                elseif e[2] == keys.tab then
+                    activeF = (activeF == "qty") and "item" or "qty"
+                    redraw(activeF)
+                elseif e[2] == keys.enter then
+                    return "save", mQty, mItem
+                end
+            end
+        end
+    end
+    
+    local mw2, mh2 = 32, 9
+    local res, rQty, rItem = lUtils.openWin("Custom Price", priceEditFn, math.floor((w - mw2)/2), math.floor((h - mh2)/2), mw2, mh2, false, false)
+    drawUI()
+    if res == "save" and #rItem > 0 then
+        priceQty = rQty
+        priceItem = rItem
+        priceOverridden = true
+        statusMsg = "Custom price set"
+    elseif res == "reset" then
+        priceOverridden = false
+        autoCalcPrice()
+        statusMsg = "Price reset to automatic"
+    end
 end
 
 -- ─────────────────────────────────────────
@@ -989,16 +1123,15 @@ while true do
 
         -- ── Left panel ──
         elseif cx < DIVX then
-            -- Seller input
-            if cy == 11 then activeField = "seller"; drawUI()
-            -- Buyer input
-            elseif cy == 13 then activeField = "buyer"; drawUI()
-            -- Price Qty
-            elseif cy == 15 and cx >= 2 and cx <= 8 then activeField = "priceQty"; drawUI()
-            -- Price Item
-            elseif cy == 15 and cx >= 12 then activeField = "priceItem"; drawUI()
-            -- PRINT button
-            elseif cy == 17 then
+            -- Seller input (row 10)
+            if cy == 10 and cx >= 6 then activeField = "seller"; drawUI()
+            -- Buyer input (row 11)
+            elseif cy == 11 and cx >= 6 then activeField = "buyer"; drawUI()
+            -- Price Edit button (row 13)
+            elseif cy == 13 and cx >= DIVX - 8 then
+                showPriceEditModal()
+            -- PRINT / CLEAR buttons (row h - 2)
+            elseif cy == h - 2 then
                 local btnW = math.floor((DIVX - 3) / 2)
                 if cx >= 2 and cx < 2 + btnW then
                     activeField = nil
@@ -1056,10 +1189,19 @@ while true do
         end
 
     elseif e[1] == "mouse_scroll" then
-        local maxPage = math.max(1, math.ceil(#items / ITEMS_PER_PAGE))
         if e[3] >= DIVX then
+            local maxPage = math.max(1, math.ceil(#items / ITEMS_PER_PAGE))
             if e[2] == 1 and page < maxPage then page = page + 1; drawUI()
             elseif e[2] == -1 and page > 1 then page = page - 1; drawUI()
+            end
+        else
+            -- Scroll left panel price list
+            if e[2] == 1 then
+                priceScroll = priceScroll + 1
+                drawUI()
+            elseif e[2] == -1 then
+                priceScroll = priceScroll - 1
+                drawUI()
             end
         end
     end
