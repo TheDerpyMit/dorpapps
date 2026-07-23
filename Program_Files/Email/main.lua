@@ -7,7 +7,10 @@ local emailCore = require("Program_Files/Email/email_core")
 
 local tArgs = { ... }
 if tArgs[1] == "load" then
-    return { name = "Gmail", version = "2.0" }
+    return { name = "GMail", version = "2.0" }
+end
+if LevelOS and LevelOS.setTitle then
+    LevelOS.setTitle("GMail")
 end
 
 -- State Variables
@@ -153,7 +156,7 @@ local function drawHeader()
     term.setTextColor(colors.white)
     term.clearLine()
     term.setCursorPos(2, 1)
-    term.write("M Gmail")
+    term.write("M GMail")
     
     local userBadge = "<" .. userEmail .. ">"
     term.setCursorPos(w - #userBadge, 1)
