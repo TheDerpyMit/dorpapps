@@ -65,8 +65,8 @@ if url2 then\
 \9table.insert(s.var.sizes,{url=url2,width=w2,height=h2})\
 end\
 if url3 then\
-\9local w3,h3 = lUtils.getField(res,\"preview_width\"),lUtils.getField(res,\"preview_height\")\
-\9w3,h3 = tonumber(w3),tonumber(h3)\
+\9local w3,h3 = lUtils.getField(res,\"file_width\") or w, lUtils.getField(res,\"file_height\") or h\
+\9w3,h3 = tonumber(w3) or w, tonumber(h3) or h\
 \9table.insert(s.var.sizes,{url=url3,width=w3,height=h3})\
 end\
 s.var.search = tags\
@@ -220,18 +220,33 @@ while true do\
     \9term.redirect(oterm)\
 \9end\
     if s.var.sizes and not s.var.gpu_jpeg and gpu then\
-    \9local url = s.var.sizes[1].url\
-    \9s.var.sizes = nil\
-    \9_G.debugurl = url\
-    \9LevelOS.setTitle(url)\
-    \9local oterm = term.current()\
-    \9term.redirect(s.win)\
-    \9term.setBackgroundColor(colors.white)\
-    \9term.setTextColor(colors.black)\
-    \9term.clear()\
-    \9lUtils.centerText(\"Downloading...\")\
-    \9term.redirect(oterm)\
-    \9local r, e = http.post(\
+    \tlocal imgObj = s.var.sizes[#s.var.sizes] or s.var.sizes[1]\
+    \tlocal url = imgObj.url\
+    \tlocal imgW = imgObj.width or 500\
+    \tlocal imgH = imgObj.height or 500\
+    \ts.var.sizes = nil\
+    \t_G.debugurl = url\
+    \tLevelOS.setTitle(url)\
+    \tlocal oterm = term.current()\
+    \tterm.redirect(s.win)\
+    \tterm.setBackgroundColor(colors.white)\
+    \tterm.setTextColor(colors.black)\
+    \tterm.clear()\
+    \tlUtils.centerText(\"Downloading...\")\
+    \tterm.redirect(oterm)\
+    \tlocal jpegData, w, h\
+    \tlocal r, e = http.get(url, {[\"User-Agent\"] = \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"}, true)\
+    \tif r then\
+    \t\tif r.getResponseCode() == 200 then\
+    \t\t\tjpegData = r.readAll()\
+    \t\t\tw = imgW\
+    \t\t\th = imgH\
+    \t\tend\
+    \t\tr.close()\
+    \tend\
+    \tif not jpegData or #jpegData == 0 then\
+    \t\tjpegData = nil\
+    \t\tlocal r2, e2 = http.post(\
 \9\9\9\9\"http://th-us1.terohost.com:25616/convert\",\
 \9\9\9\9textutils.serializeJSON({\
 \9\9\9\9\9url = url,\
@@ -242,25 +257,36 @@ while true do\
 \9\9\9\9},\
 \9\9\9\9true\
 \9\9\9)\
-    \9\9if r then\
-    \9\9\9local code = r.getResponseCode()\
-    \9\9\9local hdrs = r.getResponseHeaders()\
-    \9\9\9if code == 200 and hdrs[\"x-img-w\"] and hdrs[\"x-img-h\"] then\
-    \9\9\9\9s.var.gpu_w = tonumber(hdrs[\"x-img-w\"])\
-    \9\9\9\9s.var.gpu_h = tonumber(hdrs[\"x-img-h\"])\
-    \9\9\9\9s.var.gpu_jpeg = r.readAll()\
-    \9\9\9else\
-    \9\9\9\9local errMsg = r.readAll()\
-    \9\9\9\9if not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
-    \9\9\9\9_G.lUtils.popup(\"Gelbooru Error\", \"Image conversion failed!\\n\\nServer code: \" .. tostring(code) .. \"\\nResponse: \" .. string.sub(errMsg or \"\", 1, 60), 32, 10, {\"OK\"})\
-    \9\9\9end\
-    \9\9\9r.close()\
-    \9\9else\
-    \9\9\9if not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
-    \9\9\9_G.lUtils.popup(\"Gelbooru Error\", \"Failed to connect to image conversion server:\\n\" .. tostring(e), 32, 9, {\"OK\"})\
-    \9\9end\
-    \9s.var.rendered_gpu = nil\
-\9end\
+    \t\tif r2 then\
+    \t\t\tlocal code = r2.getResponseCode()\
+    \t\t\tlocal hdrs = r2.getResponseHeaders() or {}\
+    \t\t\tlocal data = r2.readAll()\
+    \t\t\tr2.close()\
+    \t\t\tlocal headerW, headerH\
+    \t\t\tfor k, v in pairs(hdrs) do\
+    \t\t\t\tif tostring(k):lower() == \"x-img-w\" then headerW = tonumber(v) end\
+    \t\t\t\tif tostring(k):lower() == \"x-img-h\" then headerH = tonumber(v) end\
+    \t\t\tend\
+    \t\t\tif code == 200 and data and #data > 0 then\
+    \t\t\t\tjpegData = data\
+    \t\t\t\tw = headerW or imgW\
+    \t\t\t\th = headerH or imgH\
+    \t\t\telse\
+    \t\t\t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
+    \t\t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Image conversion failed!\\n\\nServer code: \" .. tostring(code) .. \"\\nResponse: \" .. string.sub(data or \"\", 1, 60), 32, 10, {\"OK\"})\
+    \t\t\tend\
+    \t\telse\
+    \t\t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
+    \t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Failed to download image:\\n\" .. tostring(e2 or e), 32, 9, {\"OK\"})\
+    \t\tend\
+    \tend\
+    \tif jpegData then\
+    \t\ts.var.gpu_w = w or 500\
+    \t\ts.var.gpu_h = h or 500\
+    \t\ts.var.gpu_jpeg = jpegData\
+    \tend\
+    \ts.var.rendered_gpu = nil\
+\tend\
 \9if s.var.gpu_jpeg and not s.var.rendered_gpu then\
 \9\9s.var.rendered_gpu = true\
 \9\9local oterm = term.current()\
