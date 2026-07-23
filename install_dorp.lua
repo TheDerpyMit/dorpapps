@@ -31,12 +31,6 @@ local downloads = {
     { url = github_base .. "music_icon.bimg", dest = "Program_Files/Music/icon.bimg" },
     { url = github_base .. "music_icon.bimg", dest = "Program_Files/Music/taskbar.bimg" },
     
-    -- Gelbooru
-    { url = github_base .. "Program_Files/Gelbooru/main.lua", dest = "Program_Files/Gelbooru/main.lua" },
-    { url = github_base .. "Program_Files/Gelbooru/icon.bimg", dest = "Program_Files/Gelbooru/icon.bimg" },
-    { url = github_base .. "Program_Files/Gelbooru/taskbar.bimg", dest = "Program_Files/Gelbooru/taskbar.bimg" },
-    { url = github_base .. "Program_Files/Gelbooru/monrun.lua", dest = "Program_Files/Gelbooru/monrun.lua" },
-    
     -- DorpPOS
     { url = github_base .. "Program_Files/DorpPOS/main.lua", dest = "Program_Files/DorpPOS/main.lua" },
     { url = github_base .. "Program_Files/DorpPOS/icon.bimg", dest = "Program_Files/DorpPOS/icon.bimg" },
@@ -61,7 +55,6 @@ local wipeDirs = {
     "Program_Files/SysInfo",
     "Program_Files/Music",
     "Program_Files/Updater",
-    "Program_Files/Gelbooru",
     "Program_Files/DorpPOS",
     "Program_Files/Email",
     "Program_Files/StoreManager",
@@ -131,7 +124,6 @@ local shortcuts = {
     { name = "SysInfo.llnk", target = "Program_Files/SysInfo/main.lua" },
     { name = "Music.llnk", target = "Program_Files/Music/main.lua" },
     { name = "Updater.llnk", target = "Program_Files/Updater/main.lua" },
-    { name = "Gelbooru.llnk", target = "Program_Files/Gelbooru/main.lua" },
     { name = "DorpPOS.llnk", target = "Program_Files/DorpPOS/main.lua" },
     { name = "Gmail.llnk", target = "Program_Files/Email/main.lua" }
 }
