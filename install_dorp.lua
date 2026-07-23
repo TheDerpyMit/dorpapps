@@ -118,6 +118,16 @@ if not fs.exists(desktopDir) then
     fs.makeDir(desktopDir)
 end
 
+-- Delete old removed app shortcuts
+local oldShortcuts = { "Gelbooru.llnk", "Gelbooru.lnk" }
+for _, oldSc in ipairs(oldShortcuts) do
+    local oldPath = fs.combine(desktopDir, oldSc)
+    if fs.exists(oldPath) then
+        fs.delete(oldPath)
+        print("  Removed Old Shortcut: " .. oldPath)
+    end
+end
+
 local shortcuts = {
     { name = "Notepad++.llnk", target = "Program_Files/Notepad++/main.lua" },
     { name = "DorpChat.llnk", target = "Program_Files/dorpchat/main.lua" },
