@@ -27,10 +27,20 @@ s.var.iBox = self",
   },
   [ "Go.lua" ] = {
     content = "self.color = colors.lightGray\
---lUtils.shapescape.renderSlide(shapescape.getSlide())\
 self.render()\
 local s = shapescape.getSlide()\
-local tags = s.var.input[1]\
+local tags = s.var.input[1] or \"\"\
+tags = tags:match(\"^%s*(.-)%s*$\") or tags\
+if tags:sub(1,4) == \"http\" then\
+\ts.var.gpu_jpeg = nil\
+\ts.var.rendered_gpu = nil\
+\ts.var.sizes = { { url = tags, width = 500, height = 500 } }\
+\ts.var.search = tags\
+\ts.var.index = 1\
+\tself.color = colors.lime\
+\tself.render()\
+\treturn\
+end\
 local r = http.get(\"http://th-us1.terohost.com:25616/search?tags=\".. textutils.urlEncode(tags)..\"&limit=1&pid=1\")\
 if not r then\
     error(\"No connection\")\
@@ -157,7 +167,7 @@ while true do\
         term.clear()\
         os.sleep(1)]]\
     end\
-    if e[1] == \"key\" and (e[2] == keys.right or (e[2] == keys.left and s.var.index > 1)) then\
+    if e[1] == \"key\" and (e[2] == keys.right or (e[2] == keys.left and s.var.index > 1)) and s.var.search and (s.var.search:sub(1,4) ~= \"http\") then\
     \9if e[2] == keys.right then\
     \9\9s.var.index = s.var.index+1\
     \9else\
