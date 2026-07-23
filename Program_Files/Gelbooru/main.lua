@@ -232,16 +232,20 @@ while true do\
     if s.var.sizes and gpu then\
     \tlocal imgObj = s.var.sizes[#s.var.sizes] or s.var.sizes[1]\
     \tlocal url = imgObj.url\
+    \ts.var.current_url = url\
     \ts.var.sizes = nil\
     \ts.var.gpu_jpeg = nil\
     \ts.var.rendered_gpu = nil\
-    \tLevelOS.setTitle(url)\
+    \tLevelOS.setTitle(\"Gelbooru\")\
     \tlocal oterm = term.current()\
     \tterm.redirect(s.win)\
     \tterm.setBackgroundColor(colors.white)\
     \tterm.setTextColor(colors.black)\
     \tterm.clear()\
     \tlUtils.centerText(\"Loading image...\")\
+    \tlocal shortUrl = #url > 32 and (url:sub(1, 29) .. \"...\") or url\
+    \tterm.setCursorPos(1, 3)\
+    \tlUtils.centerText(shortUrl)\
     \tterm.redirect(oterm)\
     \tlocal response = http.get(url, {[\"User-Agent\"] = \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"}, true)\
     \tif response then\
@@ -280,7 +284,9 @@ while true do\
 \t\tterm.setBackgroundColor(colors.white)\
 \t\tterm.setTextColor(colors.black)\
 \t\tterm.clearLine()\
-\t\tterm.write(\"Image on DirectGPU display\")\
+\t\tlocal dispUrl = s.var.current_url or \"\"\
+\t\tif #dispUrl > 25 then dispUrl = dispUrl:sub(1, 22) .. \"...\" end\
+\t\tterm.write(\"DirectGPU: \" .. (dispUrl ~= \"\" and dispUrl or \"Image loaded\"))\
 \t\tlocal info = gpu.getDisplayInfo(gpuDisplay)\
 \t\tlocal w, h = info.pixelWidth or 128, info.pixelHeight or 128\
 \t\tgpu.clear(gpuDisplay, 0, 0, 0)\
