@@ -232,101 +232,52 @@ while true do\
     if s.var.sizes and not s.var.gpu_jpeg and gpu then\
     \tlocal imgObj = s.var.sizes[#s.var.sizes] or s.var.sizes[1]\
     \tlocal url = imgObj.url\
-    \tlocal imgW = imgObj.width or 500\
-    \tlocal imgH = imgObj.height or 500\
     \ts.var.sizes = nil\
-    \t_G.debugurl = url\
     \tLevelOS.setTitle(url)\
     \tlocal oterm = term.current()\
     \tterm.redirect(s.win)\
     \tterm.setBackgroundColor(colors.white)\
     \tterm.setTextColor(colors.black)\
     \tterm.clear()\
-    \tlUtils.centerText(\"Downloading...\")\
+    \tlUtils.centerText(\"Loading image...\")\
     \tterm.redirect(oterm)\
-    \tos.sleep(0.05)\
-    \tlocal jpegData, w, h\
-    \tlocal r, e = http.get(url, {[\"User-Agent\"] = \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"}, true)\
-    \tif r then\
-    \t\tif r.getResponseCode() == 200 then\
-    \t\t\tjpegData = r.readAll()\
-    \t\t\tw = imgW\
-    \t\t\th = imgH\
-    \t\tend\
-    \t\tr.close()\
-    \tend\
-    \tos.sleep(0.05)\
-    \tif not jpegData or #jpegData == 0 then\
-    \t\tjpegData = nil\
-    \t\tlocal r2, e2 = http.post(\
-\9\9\9\9\"http://th-us1.terohost.com:25616/convert\",\
-\9\9\9\9textutils.serializeJSON({\
-\9\9\9\9\9url = url,\
-\9\9\9\9\9format = \"directgpu\",\
-\9\9\9\9}),\
-\9\9\9\9{\
-\9\9\9\9\9[\"Content-Type\"] = \"application/json\",\
-\9\9\9\9},\
-\9\9\9\9true\
-\9\9\9)\
-    \t\tif r2 then\
-    \t\t\tlocal code = r2.getResponseCode()\
-    \t\t\tlocal hdrs = r2.getResponseHeaders() or {}\
-    \t\t\tlocal data = r2.readAll()\
-    \t\t\tr2.close()\
-    \t\t\tlocal headerW, headerH\
-    \t\t\tfor k, v in pairs(hdrs) do\
-    \t\t\t\tif tostring(k):lower() == \"x-img-w\" then headerW = tonumber(v) end\
-    \t\t\t\tif tostring(k):lower() == \"x-img-h\" then headerH = tonumber(v) end\
-    \t\t\tend\
-    \t\t\tif code == 200 and data and #data > 0 then\
-    \t\t\t\tjpegData = data\
-    \t\t\t\tw = headerW or imgW\
-    \t\t\t\th = headerH or imgH\
-    \t\t\telse\
-    \t\t\t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
-    \t\t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Image conversion failed!\\n\\nServer code: \" .. tostring(code) .. \"\\nResponse: \" .. string.sub(data or \"\", 1, 60), 32, 10, {\"OK\"})\
-    \t\t\tend\
+    \tlocal response = http.get(url, nil, true)\
+    \tif response then\
+    \t\tlocal data = response.readAll()\
+    \t\tresponse.close()\
+    \t\tif data and #data > 100 then\
+    \t\t\ts.var.gpu_jpeg = data\
     \t\telse\
     \t\t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
-    \t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Failed to download image:\\n\" .. tostring(e2 or e), 32, 9, {\"OK\"})\
+    \t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Invalid image data returned from URL.\", 32, 9, {\"OK\"})\
     \t\tend\
-    \tend\
-    \tif jpegData then\
-    \t\ts.var.gpu_w = w or 500\
-    \t\ts.var.gpu_h = h or 500\
-    \t\ts.var.gpu_jpeg = jpegData\
+    \telse\
+    \t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
+    \t\t_G.lUtils.popup(\"Gelbooru Error\", \"Failed to fetch image URL.\", 32, 9, {\"OK\"})\
     \tend\
     \ts.var.rendered_gpu = nil\
 \tend\
-\9if s.var.gpu_jpeg and not s.var.rendered_gpu then\
-\9\9s.var.rendered_gpu = true\
-\t\tos.sleep(0.05)\
-\9\9local oterm = term.current()\
-\9\9term.redirect(oterm)\
-\9\9term.setCursorPos(1,1)\
-\9\9term.setBackgroundColor(colors.white)\
-\9\9term.setTextColor(colors.black)\
-\9\9term.clearLine()\
-\9\9term.write(\"Image on DirectGPU display\")\
-\9\9local info = gpu.getDisplayInfo(gpuDisplay)\
-\9\9local dw,dh = info.pixelWidth or 128, info.pixelHeight or 128\
-\9\9local iw,ih = s.var.gpu_w or dw, s.var.gpu_h or dh\
-\9\9if iw <= 0 then iw = dw end\
-\9\9if ih <= 0 then ih = dh end\
-\9\9local scale = math.min(dw/iw, dh/ih, 1)\
-\9\9local tw,th = math.floor(iw*scale), math.floor(ih*scale)\
-\9\9local ox,oy = math.floor((dw-tw)/2), math.floor((dh-th)/2)\
-\9\9gpu.clear(gpuDisplay, 0, 0, 0)\
-\9\9local renderOk, renderErr = pcall(gpu.loadJPEGRegion, gpuDisplay, s.var.gpu_jpeg, ox, oy, tw, th)\
-\t\tif renderOk then\
+\tif s.var.gpu_jpeg and not s.var.rendered_gpu then\
+\t\ts.var.rendered_gpu = true\
+\t\tlocal oterm = term.current()\
+\t\tterm.redirect(oterm)\
+\t\tterm.setCursorPos(1,1)\
+\t\tterm.setBackgroundColor(colors.white)\
+\t\tterm.setTextColor(colors.black)\
+\t\tterm.clearLine()\
+\t\tterm.write(\"Image on DirectGPU display\")\
+\t\tlocal info = gpu.getDisplayInfo(gpuDisplay)\
+\t\tlocal w, h = info.pixelWidth or 128, info.pixelHeight or 128\
+\t\tgpu.clear(gpuDisplay, 0, 0, 0)\
+\t\tlocal ok, err = pcall(gpu.loadJPEGRegion, gpuDisplay, s.var.gpu_jpeg, 0, 0, w, h)\
+\t\tif ok then\
 \t\t\tgpu.updateDisplay(gpuDisplay)\
 \t\telse\
 \t\t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
-\t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Failed to decode image:\\n\" .. tostring(renderErr), 32, 10, {\"OK\"})\
+\t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Failed to load image: \" .. tostring(err), 32, 10, {\"OK\"})\
 \t\tend\
-\9\9term.redirect(oterm)\
-\9end\
+\t\tterm.redirect(oterm)\
+\tend\
     if not s.var.iBox.state then\
         \
     end\
