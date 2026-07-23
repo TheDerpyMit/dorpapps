@@ -1680,24 +1680,17 @@ end
 lUtils.asset = {}
 function lUtils.asset.load(filename)
 	if filename and type(filename) == "string" and fs.exists(filename) and not fs.isDir(filename) then
-		local ft = lUtils.getFileType(filename)
-		if ft == ".limg" or ft == ".bimg" or ft == ".lconf" then
-			local contents = lUtils.fread(filename, true) or ""
+		local f = fs.open(filename, "r")
+		if f then
+			local contents = f.readAll() or ""
+			f.close()
 			local data = textutils.unserialize(contents)
 			if data then
-				local oterm = term.current()
-				local trashwin = window.create(term.current(), 1, 1, 51, 19, false)
-				term.redirect(trashwin)
-				local ok, _ = pcall(lUtils.renderImg, data)
-				term.redirect(oterm)
 				return data
 			end
 		end
-		local raw = lUtils.fread(filename) or ""
-		return textutils.unserialize(raw)
-	else
-		return false
 	end
+	return false
 end
 
 

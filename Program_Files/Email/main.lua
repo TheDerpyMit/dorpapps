@@ -3,7 +3,15 @@
 -- Features: Rednet Mail Sync, Archive/Unarchive, Read/Unread, Starred, Sent, Trash, Compose
 
 if not _G.lUtils then shell.run("LevelOS/startup/lUtils") end
-local emailCore = require("Program_Files/Email/email_core")
+local emailCore
+local ok, lib = pcall(require, "email_core")
+if ok and lib then
+    emailCore = lib
+elseif fs.exists("Program_Files/Email/email_core.lua") then
+    emailCore = dofile("Program_Files/Email/email_core.lua")
+else
+    emailCore = dofile(shell.resolve("email_core.lua"))
+end
 
 local tArgs = { ... }
 if tArgs[1] == "load" then
