@@ -45,6 +45,8 @@ local downloads = {
     
     -- LevelOS Core Patches
     { url = github_base .. "LevelOS/startup/lUtils.lua", dest = "LevelOS/startup/lUtils.lua" },
+    { url = github_base .. "LevelOS/Login_screen.sgui", dest = "LevelOS/Login_screen.sgui" },
+    { url = github_base .. "LevelOS/SystemUI.lua", dest = "LevelOS/SystemUI.lua" },
     
     -- Wallpaper
     { url = github_base .. "desktop.nfp", dest = "User/Images/desktop.nfp" }
