@@ -60,18 +60,53 @@ local isDownloading = false
 -- Helper to safely extract fields from XML proxy response
 local function extractField(str, field)
     if not str then return nil end
-    local pattern = field .. "%s*=%s*\"([^\"]+)\""
-    return str:match(pattern)
+    if _G.lUtils and _G.lUtils.getField then
+        local val = _G.lUtils.getField(str, field)
+        if val and val ~= "" then return val end
+    end
+    local val = str:match(field .. "%s*=%s*\"([^\"]+)\"")
+    if not val then val = str:match(field .. "%s*=%s*'([^']+)'") end
+    if not val then val = str:match(field .. "%s*=%s*(%S+)") end
+    return val
 end
 
--- Helper to fetch search results (Direct Gelbooru API with Proxy fallback)
+-- Helper to fetch search results (Search Proxy first with Direct Gelbooru API fallback)
 local function searchGelbooru(tags, page)
     sleep(0)
     page = page or 1
     tags = tags:match("^%s*(.-)%s*$") or tags
     if tags == "" then return nil end
 
-    -- 1. Try Direct Gelbooru API
+    -- 1. Query Terohost Proxy Search
+    local tUrl = "http://th-us1.terohost.com:25616/search?tags=" .. textutils.urlEncode(tags) .. "&limit=20&pid=" .. tostring(page)
+    local r2 = http.get(tUrl)
+    if r2 then
+        local body2 = r2.readAll()
+        r2.close()
+        if body2 and body2 ~= "" then
+            local results = {}
+            for postBlock in body2:gmatch("<post[^>]+>") do
+                local sampleUrl = extractField(postBlock, "sample_url") or extractField(postBlock, "file_url") or extractField(postBlock, "preview_url")
+                if sampleUrl then
+                    local sw = tonumber(extractField(postBlock, "sample_width") or extractField(postBlock, "preview_width")) or 500
+                    local sh = tonumber(extractField(postBlock, "sample_height") or extractField(postBlock, "preview_height")) or 500
+                    table.insert(results, { url = sampleUrl, width = sw, height = sh })
+                end
+            end
+            if #results > 0 then return results end
+
+            -- Single post fallback
+            local sampleUrl = extractField(body2, "sample_url") or extractField(body2, "file_url") or extractField(body2, "preview_url")
+            if sampleUrl then
+                local sw = tonumber(extractField(body2, "sample_width") or extractField(body2, "preview_width")) or 500
+                local sh = tonumber(extractField(body2, "sample_height") or extractField(body2, "preview_height")) or 500
+                return { { url = sampleUrl, width = sw, height = sh } }
+            end
+        end
+    end
+
+    sleep(0)
+    -- 2. Direct Gelbooru API Fallback
     local gUrl = "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=20&pid=" .. tostring(page - 1) .. "&tags=" .. textutils.urlEncode(tags)
     local r = http.get(gUrl, { ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" })
     if r then
@@ -81,48 +116,22 @@ local function searchGelbooru(tags, page)
         if data then
             local posts = data.post or data.posts
             if posts then
-                local list = {}
-                if posts[1] then
-                    list = posts
-                elseif posts.file_url or posts.sample_url then
-                    list = { posts }
-                end
-                if #list > 0 then
-                    local parsed = {}
-                    for _, p in ipairs(list) do
-                        local imgUrl = p.sample_url
-                        if not imgUrl or imgUrl == "" or imgUrl:match("%.webm") or imgUrl:match("%.mp4") then
-                            imgUrl = p.file_url
-                        end
-                        if not imgUrl or imgUrl == "" or imgUrl:match("%.webm") or imgUrl:match("%.mp4") then
-                            imgUrl = p.preview_url
-                        end
-                        if imgUrl and imgUrl ~= "" then
-                            table.insert(parsed, {
-                                url = imgUrl,
-                                width = tonumber(p.sample_width or p.width) or 500,
-                                height = tonumber(p.sample_height or p.height) or 500,
-                            })
-                        end
+                local list = posts[1] and posts or { posts }
+                local parsed = {}
+                for _, p in ipairs(list) do
+                    local imgUrl = p.sample_url
+                    if not imgUrl or imgUrl == "" or imgUrl:match("%.webm") or imgUrl:match("%.mp4") then imgUrl = p.file_url end
+                    if not imgUrl or imgUrl == "" or imgUrl:match("%.webm") or imgUrl:match("%.mp4") then imgUrl = p.preview_url end
+                    if imgUrl and imgUrl ~= "" then
+                        table.insert(parsed, {
+                            url = imgUrl,
+                            width = tonumber(p.sample_width or p.width) or 500,
+                            height = tonumber(p.sample_height or p.height) or 500,
+                        })
                     end
-                    if #parsed > 0 then return parsed end
                 end
+                if #parsed > 0 then return parsed end
             end
-        end
-    end
-
-    sleep(0)
-    -- 2. Fallback to Terohost Search Proxy
-    local tUrl = "http://th-us1.terohost.com:25616/search?tags=" .. textutils.urlEncode(tags) .. "&limit=1&pid=" .. tostring(page)
-    local r2 = http.get(tUrl)
-    if r2 then
-        local body2 = r2.readAll()
-        r2.close()
-        local sampleUrl = extractField(body2, "sample_url") or extractField(body2, "file_url") or extractField(body2, "preview_url")
-        if sampleUrl then
-            local sw = tonumber(extractField(body2, "sample_width") or extractField(body2, "preview_width")) or 500
-            local sh = tonumber(extractField(body2, "sample_height") or extractField(body2, "preview_height")) or 500
-            return { { url = sampleUrl, width = sw, height = sh } }
         end
     end
 
