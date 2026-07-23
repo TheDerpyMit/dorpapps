@@ -1682,31 +1682,19 @@ function lUtils.asset.load(filename)
 	if filename and type(filename) == "string" and fs.exists(filename) and not fs.isDir(filename) then
 		local ft = lUtils.getFileType(filename)
 		if ft == ".limg" or ft == ".bimg" or ft == ".lconf" then
-			local contents = lUtils.fread(filename, true)
-			local decodedText = ""
-			local ok_utf8 = pcall(function()
-				for _, codepoint in utf8.codes(contents) do
-					if codepoint <= 255 then
-						decodedText = decodedText .. string.char(codepoint)
-					end
-				end
-			end)
-			if not ok_utf8 or decodedText == "" then
-				decodedText = contents
-			end
-			local data = textutils.unserialize(decodedText) or textutils.unserialize(contents)
-			local oterm = term.current()
-			local trashwin = window.create(term.current(), 1, 1, 51, 19, false)
-			term.redirect(trashwin)
-			local ok, _ = pcall(lUtils.renderImg, data)
-			term.redirect(oterm)
-			if ((ft == ".limg" or ft == ".bimg") and not ok) then
-				return textutils.unserialize(contents)
-			else
+			local contents = lUtils.fread(filename, true) or ""
+			local data = textutils.unserialize(contents)
+			if data then
+				local oterm = term.current()
+				local trashwin = window.create(term.current(), 1, 1, 51, 19, false)
+				term.redirect(trashwin)
+				local ok, _ = pcall(lUtils.renderImg, data)
+				term.redirect(oterm)
 				return data
 			end
 		end
-		return textutils.unserialize(lUtils.fread(filename))
+		local raw = lUtils.fread(filename) or ""
+		return textutils.unserialize(raw)
 	else
 		return false
 	end
