@@ -41,6 +41,13 @@ local downloads = {
     { url = github_base .. "Program_Files/DorpPOS/main.lua", dest = "Program_Files/DorpPOS/main.lua" },
     { url = github_base .. "Program_Files/DorpPOS/icon.bimg", dest = "Program_Files/DorpPOS/icon.bimg" },
     { url = github_base .. "Program_Files/DorpPOS/taskbar.bimg", dest = "Program_Files/DorpPOS/taskbar.bimg" },
+
+    -- Gmail / Email
+    { url = github_base .. "Program_Files/Email/main.lua", dest = "Program_Files/Email/main.lua" },
+    { url = github_base .. "Program_Files/Email/email_core.lua", dest = "Program_Files/Email/email_core.lua" },
+    { url = github_base .. "Program_Files/Email/email_server.lua", dest = "Program_Files/Email/email_server.lua" },
+    { url = github_base .. "Program_Files/Email/icon.bimg", dest = "Program_Files/Email/icon.bimg" },
+    { url = github_base .. "Program_Files/Email/taskbar.bimg", dest = "Program_Files/Email/taskbar.bimg" },
     
     -- Wallpaper
     { url = github_base .. "desktop.nfp", dest = "User/Images/desktop.nfp" }
@@ -56,6 +63,7 @@ local wipeDirs = {
     "Program_Files/Updater",
     "Program_Files/Gelbooru",
     "Program_Files/DorpPOS",
+    "Program_Files/Email",
     "Program_Files/StoreManager",
 }
 for _, dir in ipairs(wipeDirs) do
@@ -124,7 +132,8 @@ local shortcuts = {
     { name = "Music.llnk", target = "Program_Files/Music/main.lua" },
     { name = "Updater.llnk", target = "Program_Files/Updater/main.lua" },
     { name = "Gelbooru.llnk", target = "Program_Files/Gelbooru/main.lua" },
-    { name = "DorpPOS.llnk", target = "Program_Files/DorpPOS/main.lua" }
+    { name = "DorpPOS.llnk", target = "Program_Files/DorpPOS/main.lua" },
+    { name = "Gmail.llnk", target = "Program_Files/Email/main.lua" }
 }
 
 for _, sc in ipairs(shortcuts) do
