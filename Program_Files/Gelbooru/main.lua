@@ -57,6 +57,9 @@ local cachedPosts = {}
 local statusText = "Ready. Enter tags or image URL."
 local isDownloading = false
 
+local API_KEY = "d790b8a1e13723b22232bf0be7cc6a5c12f242aedec876a8e92c9521bd7d70426c093187bb925b7f7b9fea060152e18c247efeaf7221e32c8af121a00c1e66db"
+local USER_ID = "2018376"
+
 -- Helper to safely extract fields from XML proxy response
 local function extractField(str, field)
     if not str then return nil end
@@ -70,44 +73,15 @@ local function extractField(str, field)
     return val
 end
 
--- Helper to fetch search results (Search Proxy first with Direct Gelbooru API fallback)
+-- Helper to fetch search results (Direct Gelbooru API first with Proxy fallback)
 local function searchGelbooru(tags, page)
     sleep(0)
     page = page or 1
     tags = tags:match("^%s*(.-)%s*$") or tags
     if tags == "" then return nil end
 
-    -- 1. Query Terohost Proxy Search
-    local tUrl = "http://th-us1.terohost.com:25616/search?tags=" .. textutils.urlEncode(tags) .. "&limit=20&pid=" .. tostring(page)
-    local r2 = http.get(tUrl)
-    if r2 then
-        local body2 = r2.readAll()
-        r2.close()
-        if body2 and body2 ~= "" then
-            local results = {}
-            for postBlock in body2:gmatch("<post[^>]+>") do
-                local sampleUrl = extractField(postBlock, "sample_url") or extractField(postBlock, "file_url") or extractField(postBlock, "preview_url")
-                if sampleUrl then
-                    local sw = tonumber(extractField(postBlock, "sample_width") or extractField(postBlock, "preview_width")) or 500
-                    local sh = tonumber(extractField(postBlock, "sample_height") or extractField(postBlock, "preview_height")) or 500
-                    table.insert(results, { url = sampleUrl, width = sw, height = sh })
-                end
-            end
-            if #results > 0 then return results end
-
-            -- Single post fallback
-            local sampleUrl = extractField(body2, "sample_url") or extractField(body2, "file_url") or extractField(body2, "preview_url")
-            if sampleUrl then
-                local sw = tonumber(extractField(body2, "sample_width") or extractField(body2, "preview_width")) or 500
-                local sh = tonumber(extractField(body2, "sample_height") or extractField(body2, "preview_height")) or 500
-                return { { url = sampleUrl, width = sw, height = sh } }
-            end
-        end
-    end
-
-    sleep(0)
-    -- 2. Direct Gelbooru API Fallback
-    local gUrl = "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=20&pid=" .. tostring(page - 1) .. "&tags=" .. textutils.urlEncode(tags)
+    -- 1. Direct Gelbooru API with API Key & User ID
+    local gUrl = "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&api_key=" .. API_KEY .. "&user_id=" .. USER_ID .. "&limit=20&pid=" .. tostring(page - 1) .. "&tags=" .. textutils.urlEncode(tags)
     local r = http.get(gUrl, { ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" })
     if r then
         local body = r.readAll()
@@ -132,6 +106,27 @@ local function searchGelbooru(tags, page)
                 end
                 if #parsed > 0 then return parsed end
             end
+        end
+    end
+
+    sleep(0)
+    -- 2. Fallback to Terohost Proxy Search
+    local tUrl = "http://th-us1.terohost.com:25616/search?tags=" .. textutils.urlEncode(tags) .. "&limit=20&pid=" .. tostring(page)
+    local r2 = http.get(tUrl)
+    if r2 then
+        local body2 = r2.readAll()
+        r2.close()
+        if body2 and body2 ~= "" then
+            local results = {}
+            for postBlock in body2:gmatch("<post[^>]+>") do
+                local sampleUrl = extractField(postBlock, "sample_url") or extractField(postBlock, "file_url") or extractField(postBlock, "preview_url")
+                if sampleUrl then
+                    local sw = tonumber(extractField(postBlock, "sample_width") or extractField(postBlock, "preview_width")) or 500
+                    local sh = tonumber(extractField(postBlock, "sample_height") or extractField(postBlock, "preview_height")) or 500
+                    table.insert(results, { url = sampleUrl, width = sw, height = sh })
+                end
+            end
+            if #results > 0 then return results end
         end
     end
 
