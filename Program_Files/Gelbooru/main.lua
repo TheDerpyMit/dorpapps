@@ -244,6 +244,7 @@ while true do\
     \tterm.clear()\
     \tlUtils.centerText(\"Downloading...\")\
     \tterm.redirect(oterm)\
+    \tos.sleep(0.05)\
     \tlocal jpegData, w, h\
     \tlocal r, e = http.get(url, {[\"User-Agent\"] = \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"}, true)\
     \tif r then\
@@ -254,6 +255,7 @@ while true do\
     \t\tend\
     \t\tr.close()\
     \tend\
+    \tos.sleep(0.05)\
     \tif not jpegData or #jpegData == 0 then\
     \t\tjpegData = nil\
     \t\tlocal r2, e2 = http.post(\
@@ -299,6 +301,7 @@ while true do\
 \tend\
 \9if s.var.gpu_jpeg and not s.var.rendered_gpu then\
 \9\9s.var.rendered_gpu = true\
+\t\tos.sleep(0.05)\
 \9\9local oterm = term.current()\
 \9\9term.redirect(oterm)\
 \9\9term.setCursorPos(1,1)\
@@ -307,14 +310,21 @@ while true do\
 \9\9term.clearLine()\
 \9\9term.write(\"Image on DirectGPU display\")\
 \9\9local info = gpu.getDisplayInfo(gpuDisplay)\
-\9\9local dw,dh = info.pixelWidth, info.pixelHeight\
-\9\9local iw,ih = s.var.gpu_w, s.var.gpu_h\
+\9\9local dw,dh = info.pixelWidth or 128, info.pixelHeight or 128\
+\9\9local iw,ih = s.var.gpu_w or dw, s.var.gpu_h or dh\
+\9\9if iw <= 0 then iw = dw end\
+\9\9if ih <= 0 then ih = dh end\
 \9\9local scale = math.min(dw/iw, dh/ih, 1)\
 \9\9local tw,th = math.floor(iw*scale), math.floor(ih*scale)\
 \9\9local ox,oy = math.floor((dw-tw)/2), math.floor((dh-th)/2)\
 \9\9gpu.clear(gpuDisplay, 0, 0, 0)\
-\9\9gpu.loadJPEGRegion(gpuDisplay, s.var.gpu_jpeg, ox, oy, tw, th)\
-\9\9gpu.updateDisplay(gpuDisplay)\
+\9\9local renderOk, renderErr = pcall(gpu.loadJPEGRegion, gpuDisplay, s.var.gpu_jpeg, ox, oy, tw, th)\
+\t\tif renderOk then\
+\t\t\tgpu.updateDisplay(gpuDisplay)\
+\t\telse\
+\t\t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
+\t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Failed to decode image:\\n\" .. tostring(renderErr), 32, 10, {\"OK\"})\
+\t\tend\
 \9\9term.redirect(oterm)\
 \9end\
     if not s.var.iBox.state then\
