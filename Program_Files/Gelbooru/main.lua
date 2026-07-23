@@ -66,6 +66,7 @@ end
 
 -- Helper to fetch search results (Direct Gelbooru API with Proxy fallback)
 local function searchGelbooru(tags, page)
+    sleep(0)
     page = page or 1
     tags = tags:match("^%s*(.-)%s*$") or tags
     if tags == "" then return nil end
@@ -110,6 +111,7 @@ local function searchGelbooru(tags, page)
         end
     end
 
+    sleep(0)
     -- 2. Fallback to Terohost Search Proxy
     local tUrl = "http://th-us1.terohost.com:25616/search?tags=" .. textutils.urlEncode(tags) .. "&limit=1&pid=" .. tostring(page)
     local r2 = http.get(tUrl)
@@ -130,6 +132,7 @@ end
 -- Helper to fetch binary JPEG data (Direct GET with Server Converter fallback)
 local function fetchImageBytes(url)
     if not url then return nil end
+    sleep(0)
     
     -- Stage 1: Direct binary fetch
     local r = http.get(url, { ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }, true)
@@ -145,6 +148,7 @@ local function fetchImageBytes(url)
         end
     end
 
+    sleep(0)
     -- Stage 2: Converter Proxy
     local r2 = http.post(
         "http://th-us1.terohost.com:25616/convert",
@@ -170,6 +174,7 @@ end
 -- Render image data onto DirectGPU display
 local function renderToDirectGPU(jpegData)
     if not jpegData then return false end
+    sleep(0)
     initDisplay()
     if not gpuDisplay or gpuDisplay == -1 then return false end
 
@@ -276,13 +281,16 @@ local function loadActiveImage()
     isDownloading = true
     statusText = "Downloading image..."
     drawUI()
+    sleep(0)
 
     local shortUrl = #targetUrl > 25 and (targetUrl:sub(1, 22) .. "...") or targetUrl
     local data = fetchImageBytes(targetUrl)
+    sleep(0)
     isDownloading = false
 
     if data then
         local ok = renderToDirectGPU(data)
+        sleep(0)
         if ok then
             statusText = "Displayed: " .. shortUrl
         else
