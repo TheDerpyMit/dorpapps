@@ -31,9 +31,9 @@ self.render()\
 local s = shapescape.getSlide()\
 local tags = s.var.input[1] or \"\"\
 tags = tags:match(\"^%s*(.-)%s*$\") or tags\
+s.var.gpu_jpeg = nil\
+s.var.rendered_gpu = nil\
 if tags:sub(1,4) == \"http\" then\
-\ts.var.gpu_jpeg = nil\
-\ts.var.rendered_gpu = nil\
 \ts.var.sizes = { { url = tags, width = 500, height = 500 } }\
 \ts.var.search = tags\
 \ts.var.index = 1\
@@ -229,10 +229,12 @@ while true do\
     \9end\
     \9term.redirect(oterm)\
 \9end\
-    if s.var.sizes and not s.var.gpu_jpeg and gpu then\
+    if s.var.sizes and gpu then\
     \tlocal imgObj = s.var.sizes[#s.var.sizes] or s.var.sizes[1]\
     \tlocal url = imgObj.url\
     \ts.var.sizes = nil\
+    \ts.var.gpu_jpeg = nil\
+    \ts.var.rendered_gpu = nil\
     \tLevelOS.setTitle(url)\
     \tlocal oterm = term.current()\
     \tterm.redirect(s.win)\
@@ -241,17 +243,30 @@ while true do\
     \tterm.clear()\
     \tlUtils.centerText(\"Loading image...\")\
     \tterm.redirect(oterm)\
-    \tlocal response = http.get(url, nil, true)\
+    \tlocal response = http.get(url, {[\"User-Agent\"] = \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"}, true)\
     \tif response then\
     \t\tlocal data = response.readAll()\
     \t\tresponse.close()\
     \t\tif data and #data > 100 then\
     \t\t\ts.var.gpu_jpeg = data\
-    \t\telse\
-    \t\t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
-    \t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Invalid image data returned from URL.\", 32, 9, {\"OK\"})\
     \t\tend\
-    \telse\
+    \tend\
+    \tif not s.var.gpu_jpeg then\
+    \t\tlocal r2 = http.post(\
+\9\9\9\"http://th-us1.terohost.com:25616/convert\",\
+\9\9\9textutils.serializeJSON({ url = url, format = \"directgpu\" }),\
+\9\9\9{ [\"Content-Type\"] = \"application/json\" },\
+\9\9\9true\
+\t\t)\
+    \t\tif r2 then\
+    \t\t\tlocal data2 = r2.readAll()\
+    \t\t\tr2.close()\
+    \t\t\tif data2 and #data2 > 100 then\
+    \t\t\t\ts.var.gpu_jpeg = data2\
+    \t\t\tend\
+    \t\tend\
+    \tend\
+    \tif not s.var.gpu_jpeg then\
     \t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
     \t\t_G.lUtils.popup(\"Gelbooru Error\", \"Failed to fetch image URL.\", 32, 9, {\"OK\"})\
     \tend\
