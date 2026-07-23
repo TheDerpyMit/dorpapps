@@ -41,49 +41,46 @@ if tags:sub(1,4) == \"http\" then\
 \tself.render()\
 \treturn\
 end\
-local r = http.get(\"http://th-us1.terohost.com:25616/search?tags=\".. textutils.urlEncode(tags)..\"&limit=1&pid=1\")\
-if not r then\
-    error(\"No connection\")\
+local imgUrl, w, h\
+local gUrl = \"https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=1&pid=0&tags=\" .. textutils.urlEncode(tags)\
+local r = http.get(gUrl, {[\"User-Agent\"] = \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"})\
+if r then\
+\tlocal body = r.readAll()\
+\tr.close()\
+\tlocal data = textutils.unserializeJSON(body)\
+\tif data then\
+\t\tlocal posts = data.post or data.posts\
+\t\tlocal post = posts and (posts[1] or (posts.file_url and posts))\
+\t\tif post then\
+\t\t\timgUrl = post.sample_url\
+\t\t\tif not imgUrl or imgUrl == \"\" or imgUrl:match(\"%.webm\") or imgUrl:match(\"%.mp4\") then imgUrl = post.file_url end\
+\t\t\tif not imgUrl or imgUrl == \"\" or imgUrl:match(\"%.webm\") or imgUrl:match(\"%.mp4\") then imgUrl = post.preview_url end\
+\t\t\tw, h = tonumber(post.sample_width or post.width) or 500, tonumber(post.sample_height or post.height) or 500\
+\t\tend\
+\tend\
 end\
-local res = r.readAll()\
-_G.debugres = res\
---local url = res:match(\"preview_url\\=\\\"(%S-)\\\"\")\
-local url = lUtils.getField(res,\"preview_url\")\
-if not url then\
-    lUtils.popup(\"Error\",\"No results!\",27,9,{\"OK\"})\
-    return\
+if not imgUrl then\
+\tlocal r2 = http.get(\"http://th-us1.terohost.com:25616/search?tags=\".. textutils.urlEncode(tags)..\"&limit=1&pid=1\")\
+\tif r2 then\
+\t\tlocal res = r2.readAll()\
+\t\tr2.close()\
+\t\timgUrl = lUtils.getField(res,\"sample_url\") or lUtils.getField(res,\"file_url\") or lUtils.getField(res,\"preview_url\")\
+\t\tw = tonumber(lUtils.getField(res,\"sample_width\") or lUtils.getField(res,\"preview_width\")) or 500\
+\t\th = tonumber(lUtils.getField(res,\"sample_height\") or lUtils.getField(res,\"preview_height\")) or 500\
+\telse\
+\t\tlUtils.popup(\"Error\", \"No connection\", 27, 9, {\"OK\"})\
+\t\treturn\
+\tend\
 end\
--- get sample_width and sample_height then resize\
---local w,h = res:match(\"preview_width\\=\\\"(%S-)\\\"\"),res:match(\"preview_height\\=\\\"(%S-)\\\"\")\
-local w,h = lUtils.getField(res,\"preview_width\"),lUtils.getField(res,\"preview_height\")\
-w,h = tonumber(w),tonumber(h)\
---[[local i = http.get(url).readAll()\
-local image,err = http.post(\"http://img-resize.com/resize\",\"height=\"..tostring(({term.getSize()})[2]/3)..\"&op=fixedWidth&input=\".. textutils.urlEncode(i)..\";type=image/\".. lUtils.getFileType(url):sub(2,4)..\"\")\
-if not image then\
-    lUtils.popup(\"Error\",err,27,11,{\"OK\"})\
-    return\
+if not imgUrl then\
+\tlUtils.popup(\"Error\",\"No results!\",27,9,{\"OK\"})\
+\treturn\
 end\
-http.post(\"https://www.level.eu5.net/pImage.php\",\"content=\".. textutils.urlEncode(image.readAll()),{Cookie=lOS.userID})\
-local img = http.get(\"http://tojuroku.switchcraft.pw/?url=\".. textutils.urlEncode(\"https://www.level.eu5.net/image\")).readAll()]]\
-s.var.sizes = {}\
-local url2 = lUtils.getField(res,\"sample_url\")\
-local url3 = lUtils.getField(res,\"file_url\")\
-table.insert(s.var.sizes,{url=url,width=w,height=h})\
-if url2 then\
-\9local w2,h2 = lUtils.getField(res,\"sample_width\"),lUtils.getField(res,\"sample_height\")\
-\9w2,h2 = tonumber(w2),tonumber(h2)\
-\9table.insert(s.var.sizes,{url=url2,width=w2,height=h2})\
-end\
-if url3 then\
-\9local w3,h3 = lUtils.getField(res,\"file_width\") or w, lUtils.getField(res,\"file_height\") or h\
-\9w3,h3 = tonumber(w3) or w, tonumber(h3) or h\
-\9table.insert(s.var.sizes,{url=url3,width=w3,height=h3})\
-end\
+s.var.sizes = { { url = imgUrl, width = w, height = h } }\
 s.var.search = tags\
 s.var.index = 1\
 self.color = colors.lime\
-self.render()\
--- sample cant be json",
+self.render()",
     name = "Go.lua",
     id = 1,
   },
@@ -168,42 +165,46 @@ while true do\
         os.sleep(1)]]\
     end\
     if e[1] == \"key\" and (e[2] == keys.right or (e[2] == keys.left and s.var.index > 1)) and s.var.search and (s.var.search:sub(1,4) ~= \"http\") then\
-    \9if e[2] == keys.right then\
-    \9\9s.var.index = s.var.index+1\
-    \9else\
-    \9\9s.var.index = s.var.index-1\
-    \9end\
-    \9local url = \"http://th-us1.terohost.com:25616/search?tags=\".. textutils.urlEncode(s.var.search)..\"&limit=1&pid=\"..s.var.index\
-    \9local res\
-    \9if cache[url] then\
-    \9\9res = cache[url]\
-    \9else\
-    \9\9local r = http.get(url)\
-    \9\9if r then\
-    \9\9\9res = r.readAll()\
-    \9\9end\
-    \9end\
-    \9if res then\
-    \9\9cache[url] = res\
-\9\9\9s.var.gpu_jpeg = nil\
-\9\9\9s.var.rendered_gpu = nil\
-\9\9\9local url = lUtils.getField(res,\"preview_url\")\
-\9\9\9s.var.sizes = {}\
-\9\9\9local url2 = lUtils.getField(res,\"sample_url\")\
-\9\9\9local url3 = lUtils.getField(res,\"file_url\")\
-\9\9\9table.insert(s.var.sizes,{url=url,width=w,height=h})\
-\9\9\9if url2 then\
-\9\9\9\9local w2,h2 = lUtils.getField(res,\"sample_width\"),lUtils.getField(res,\"sample_height\")\
-\9\9\9\9w2,h2 = tonumber(w2),tonumber(h2)\
-\9\9\9\9table.insert(s.var.sizes,{url=url2,width=w2,height=h2})\
-\9\9\9end\
-\9\9\9if url3 then\
-\9\9\9\9local w3,h3 = lUtils.getField(res,\"preview_width\"),lUtils.getField(res,\"preview_height\")\
-\9\9\9\9w3,h3 = tonumber(w3),tonumber(h3)\
-\9\9\9\9table.insert(s.var.sizes,{url=url3,width=w3,height=h3})\
-\9\9\9end\
-\9\9end\
-\9end\
+    \tif e[2] == keys.right then\
+    \t\ts.var.index = s.var.index + 1\
+    \telse\
+    \t\ts.var.index = s.var.index - 1\
+    \tend\
+    \tlocal imgUrl, w, h\
+    \tlocal gUrl = \"https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=1&pid=\" .. tostring(s.var.index - 1) .. \"&tags=\" .. textutils.urlEncode(s.var.search)\
+    \tlocal r = http.get(gUrl, {[\"User-Agent\"] = \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"})\
+    \tif r then\
+    \t\tlocal body = r.readAll()\
+    \t\tr.close()\
+    \t\tlocal data = textutils.unserializeJSON(body)\
+    \t\tif data then\
+    \t\t\tlocal posts = data.post or data.posts\
+    \t\t\tlocal post = posts and (posts[1] or (posts.file_url and posts))\
+    \t\t\tif post then\
+    \t\t\t\timgUrl = post.sample_url\
+    \t\t\t\tif not imgUrl or imgUrl == \"\" or imgUrl:match(\"%.webm\") or imgUrl:match(\"%.mp4\") then imgUrl = post.file_url end\
+    \t\t\t\tif not imgUrl or imgUrl == \"\" or imgUrl:match(\"%.webm\") or imgUrl:match(\"%.mp4\") then imgUrl = post.preview_url end\
+    \t\t\t\tw, h = tonumber(post.sample_width or post.width) or 500, tonumber(post.sample_height or post.height) or 500\
+    \t\t\tend\
+    \t\tend\
+    \tend\
+    \tif not imgUrl then\
+    \t\tlocal tUrl = \"http://th-us1.terohost.com:25616/search?tags=\".. textutils.urlEncode(s.var.search)..\"&limit=1&pid=\"..s.var.index\
+    \t\tlocal r2 = http.get(tUrl)\
+    \t\tif r2 then\
+    \t\t\tlocal res = r2.readAll()\
+    \t\t\tr2.close()\
+    \t\t\timgUrl = lUtils.getField(res,\"sample_url\") or lUtils.getField(res,\"file_url\") or lUtils.getField(res,\"preview_url\")\
+    \t\t\tw = tonumber(lUtils.getField(res,\"sample_width\") or lUtils.getField(res,\"preview_width\")) or 500\
+    \t\t\th = tonumber(lUtils.getField(res,\"sample_height\") or lUtils.getField(res,\"preview_height\")) or 500\
+    \t\tend\
+    \tend\
+    \tif imgUrl then\
+    \t\ts.var.gpu_jpeg = nil\
+    \t\ts.var.rendered_gpu = nil\
+    \t\ts.var.sizes = { { url = imgUrl, width = w, height = h } }\
+    \tend\
+    end\
     if not gpu then\
     \9local oterm = term.current()\
     \9term.redirect(s.win)\
