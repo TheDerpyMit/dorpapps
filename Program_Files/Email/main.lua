@@ -431,10 +431,20 @@ end
 -- Main Event Loop
 drawUI()
 
+if not serverID then
+    _G.lUtils.popup("Gmail Status", "No Rednet Mail Server found!\nEnsure wireless modem is attached.\nRunning in Offline Mode.", 36, 9, { "OK" })
+    drawUI()
+end
+
 while true do
     sleep(0)
     local e = { os.pullEvent() }
     local eventType = e[1]
+
+    if eventType == "term_resize" then
+        w, h = term.getSize()
+        drawUI()
+    end
 
     -- Handle incoming Rednet messages
     if eventType == "rednet_message" then
