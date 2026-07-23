@@ -366,11 +366,13 @@ local function loadActiveImage()
             statusText = "Failed to render on DirectGPU."
             drawUI()
             _G.lUtils.popup("Gelbooru Error", "Failed to render image on DirectGPU display.", 34, 9, { "OK" })
+            drawUI()
         end
     else
         statusText = "Failed to fetch image."
         drawUI()
         _G.lUtils.popup("Gelbooru Error", "Failed to fetch image from URL:\n" .. shortUrl, 34, 9, { "OK" })
+        drawUI()
     end
     drawUI()
 end
@@ -416,6 +418,7 @@ while true do
                     statusText = "No results found."
                     drawUI()
                     _G.lUtils.popup("Gelbooru", "No results found for tags:\n" .. currentSearch, 32, 9, { "OK" })
+                    drawUI()
                 end
             end
         end
@@ -481,6 +484,7 @@ while true do
                         statusText = "No results found."
                         drawUI()
                         _G.lUtils.popup("Gelbooru", "No results found for tags:\n" .. currentSearch, 32, 9, { "OK" })
+                        drawUI()
                     end
                 end
             end
