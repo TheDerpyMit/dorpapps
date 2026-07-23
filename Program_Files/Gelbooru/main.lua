@@ -274,6 +274,14 @@ while true do\
     \t\t--------- debug log output for directgpu status ------------\
     \t\tend\
     \t\tif not s.var.gpu_jpeg then\
+    \t\t\tlocal oterm2 = term.current()\
+    \t\t\tterm.redirect(s.win)\
+    \t\t\tterm.setBackgroundColor(colors.black)\
+    \t\t\tterm.setTextColor(colors.white)\
+    \t\t\tterm.clear()\
+    \t\t\tterm.setCursorPos(1,1)\
+    \t\t\tterm.write(\"Failed to load image.\")\
+    \t\t\tterm.redirect(oterm2)\
     \t\t\tif not _G.lUtils then shell.run(\"LevelOS/startup/lUtils\") end\
     \t\t\t_G.lUtils.popup(\"Gelbooru Error\", \"Failed to fetch image URL.\", 32, 9, {\"OK\"})\
     \t\tend\
