@@ -4,6 +4,21 @@
 
 if not _G.lUtils then shell.run("LevelOS/startup/lUtils") end
 
+local LOG_FILE = "Program_Files/Gelbooru/debug.log"
+
+local function log(msg)
+    local timeStr = textutils.formatTime(os.time(), true) .. " [Day " .. tostring(os.day()) .. "]"
+    local line = string.format("[%s] %s\n", timeStr, tostring(msg))
+    local f = fs.open(LOG_FILE, "a")
+    if f then
+        f.write(line)
+        f.close()
+    end
+end
+
+log("==========================================")
+log("Gelbooru App Launched.")
+
 local tArgs = { ... }
 if tArgs[1] == "load" then
     return { name = "Gelbooru Viewer", version = "2.0" }
@@ -11,8 +26,10 @@ end
 
 -- Check required hardware peripherals
 local gpu = peripheral.find("directgpu")
+log("DirectGPU Peripheral: " .. (gpu and "FOUND" or "NOT FOUND"))
 
 if not gpu then
+    log("ERROR: DirectGPU peripheral missing.")
     _G.lUtils.popup(
         "Gelbooru Error",
         "DirectGPU Peripheral Missing!\n\nThis app requires a DirectGPU block connected to this computer.",
@@ -28,10 +45,14 @@ local function initDisplay()
         local ok, id = pcall(gpu.autoDetectAndCreateDisplayWithResolution, 2)
         if ok and id and id ~= -1 then
             gpuDisplay = id
+            log("initDisplay() created GPU Display ID: " .. tostring(gpuDisplay) .. " (res 2)")
         else
             local ok2, id2 = pcall(gpu.autoDetectAndCreateDisplay)
             if ok2 and id2 and id2 ~= -1 then
                 gpuDisplay = id2
+                log("initDisplay() created GPU Display ID: " .. tostring(gpuDisplay) .. " (res 1)")
+            else
+                log("initDisplay() failed to detect display.")
             end
         end
     end
@@ -79,13 +100,17 @@ local function searchGelbooru(tags, page)
     page = page or 1
     tags = tags:match("^%s*(.-)%s*$") or tags
     if tags == "" then return nil end
+    log("searchGelbooru() searching tags: '" .. tags .. "', page: " .. tostring(page))
 
     -- 1. Direct Gelbooru API with API Key & User ID
     local gUrl = "https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&api_key=" .. API_KEY .. "&user_id=" .. USER_ID .. "&limit=20&pid=" .. tostring(page - 1) .. "&tags=" .. textutils.urlEncode(tags)
+    log("Querying Direct Gelbooru API: " .. gUrl)
     local r = http.get(gUrl, { ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" })
     if r then
+        local status = r.getResponseCode()
         local body = r.readAll()
         r.close()
+        log("Direct Gelbooru API HTTP Status: " .. tostring(status) .. ", Body Len: " .. tostring(#body))
         local data = textutils.unserializeJSON(body)
         if data then
             local posts = data.post or data.posts
@@ -104,18 +129,28 @@ local function searchGelbooru(tags, page)
                         })
                     end
                 end
-                if #parsed > 0 then return parsed end
+                if #parsed > 0 then
+                    log("Parsed " .. tostring(#parsed) .. " posts from Direct Gelbooru API.")
+                    return parsed
+                end
             end
+        else
+            log("Failed to parse JSON from Direct Gelbooru API.")
         end
+    else
+        log("Direct Gelbooru API HTTP Request returned nil.")
     end
 
     sleep(0)
     -- 2. Fallback to Terohost Proxy Search
     local tUrl = "http://th-us1.terohost.com:25616/search?tags=" .. textutils.urlEncode(tags) .. "&limit=20&pid=" .. tostring(page)
+    log("Querying Terohost Proxy Search: " .. tUrl)
     local r2 = http.get(tUrl)
     if r2 then
+        local status2 = r2.getResponseCode()
         local body2 = r2.readAll()
         r2.close()
+        log("Terohost Proxy Search HTTP Status: " .. tostring(status2) .. ", Body Len: " .. tostring(#body2))
         if body2 and body2 ~= "" then
             local results = {}
             for postBlock in body2:gmatch("<post[^>]+>") do
@@ -126,10 +161,16 @@ local function searchGelbooru(tags, page)
                     table.insert(results, { url = sampleUrl, width = sw, height = sh })
                 end
             end
-            if #results > 0 then return results end
+            if #results > 0 then
+                log("Parsed " .. tostring(#results) .. " posts from Terohost Proxy Search.")
+                return results
+            end
         end
+    else
+        log("Terohost Proxy Search HTTP Request returned nil.")
     end
 
+    log("searchGelbooru() returned NO results for tags: '" .. tags .. "'")
     return nil
 end
 
@@ -137,23 +178,32 @@ end
 local function fetchImageBytes(url)
     if not url then return nil end
     sleep(0)
+    log("fetchImageBytes() requested for URL: " .. url)
     
     -- Stage 1: Direct binary fetch
     local r = http.get(url, { ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }, true)
     if r then
-        if r.getResponseCode() == 200 then
+        local status = r.getResponseCode()
+        if status == 200 then
             local data = r.readAll()
             r.close()
             if data and #data > 100 then
+                log("Stage 1 Direct Fetch SUCCESS. Status: 200, Bytes: " .. tostring(#data))
                 return data
+            else
+                log("Stage 1 Direct Fetch returned short data (Len: " .. tostring(data and #data) .. ")")
             end
         else
             r.close()
+            log("Stage 1 Direct Fetch Status: " .. tostring(status))
         end
+    else
+        log("Stage 1 Direct Fetch HTTP Request returned nil.")
     end
 
     sleep(0)
     -- Stage 2: Converter Proxy
+    log("Trying Stage 2 Converter Proxy for URL: " .. url)
     local r2 = http.post(
         "http://th-us1.terohost.com:25616/convert",
         textutils.serializeJSON({ url = url, format = "directgpu" }),
@@ -161,17 +211,25 @@ local function fetchImageBytes(url)
         true
     )
     if r2 then
-        if r2.getResponseCode() == 200 then
+        local status2 = r2.getResponseCode()
+        if status2 == 200 then
             local data2 = r2.readAll()
             r2.close()
             if data2 and #data2 > 100 then
+                log("Stage 2 Converter Proxy SUCCESS. Status: 200, Bytes: " .. tostring(#data2))
                 return data2
+            else
+                log("Stage 2 Converter Proxy returned short data (Len: " .. tostring(data2 and #data2) .. ")")
             end
         else
             r2.close()
+            log("Stage 2 Converter Proxy Status: " .. tostring(status2))
         end
+    else
+        log("Stage 2 Converter Proxy HTTP Request returned nil.")
     end
 
+    log("fetchImageBytes() FAILED for URL: " .. url)
     return nil
 end
 
@@ -180,17 +238,24 @@ local function renderToDirectGPU(jpegData)
     if not jpegData then return false end
     sleep(0)
     initDisplay()
-    if not gpuDisplay or gpuDisplay == -1 then return false end
+    if not gpuDisplay or gpuDisplay == -1 then
+        log("renderToDirectGPU() ERROR: No valid gpuDisplay ID.")
+        return false
+    end
 
     local info = gpu.getDisplayInfo(gpuDisplay)
     local dw = (info and info.pixelWidth and info.pixelWidth > 0) and info.pixelWidth or 300
     local dh = (info and info.pixelHeight and info.pixelHeight > 0) and info.pixelHeight or 300
+    log(string.format("renderToDirectGPU() Display ID %d Bounds: %dx%d, JPEG Len: %d bytes", gpuDisplay, dw, dh, #jpegData))
 
     gpu.clear(gpuDisplay, 0, 0, 0)
     local ok, err = pcall(gpu.loadJPEGRegion, gpuDisplay, jpegData, 0, 0, dw, dh)
     if ok then
         gpu.updateDisplay(gpuDisplay)
+        log("renderToDirectGPU() SUCCESS!")
         return true
+    else
+        log("renderToDirectGPU() ERROR: " .. tostring(err))
     end
     return false
 end
