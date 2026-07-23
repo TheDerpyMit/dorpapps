@@ -18,8 +18,7 @@ end
 local assets = {
   setinput = {
     content = "local s = shapescape.getSlide()\
-s.var = {}\
-os.sleep(0.5)\
+if not s.var then s.var = {} end\
 s.var.input = self.lines\
 s.var.iBox = self",
     name = "setinput",
@@ -42,34 +41,31 @@ if tags:sub(1,4) == \"http\" then\
 \treturn\
 end\
 local imgUrl, w, h\
-local gUrl = \"https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=1&pid=0&tags=\" .. textutils.urlEncode(tags)\
-local r = http.get(gUrl, {[\"User-Agent\"] = \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"})\
-if r then\
-\tlocal body = r.readAll()\
-\tr.close()\
-\tlocal data = textutils.unserializeJSON(body)\
-\tif data then\
-\t\tlocal posts = data.post or data.posts\
-\t\tlocal post = posts and (posts[1] or (posts.file_url and posts))\
-\t\tif post then\
-\t\t\timgUrl = post.sample_url\
-\t\t\tif not imgUrl or imgUrl == \"\" or imgUrl:match(\"%.webm\") or imgUrl:match(\"%.mp4\") then imgUrl = post.file_url end\
-\t\t\tif not imgUrl or imgUrl == \"\" or imgUrl:match(\"%.webm\") or imgUrl:match(\"%.mp4\") then imgUrl = post.preview_url end\
-\t\t\tw, h = tonumber(post.sample_width or post.width) or 500, tonumber(post.sample_height or post.height) or 500\
-\t\tend\
-\tend\
+local r2 = http.get(\"http://th-us1.terohost.com:25616/search?tags=\".. textutils.urlEncode(tags)..\"&limit=1&pid=1\")\
+if r2 then\
+\tlocal res = r2.readAll()\
+\tr2.close()\
+\timgUrl = lUtils.getField(res,\"sample_url\") or lUtils.getField(res,\"file_url\") or lUtils.getField(res,\"preview_url\")\
+\tw = tonumber(lUtils.getField(res,\"sample_width\") or lUtils.getField(res,\"preview_width\")) or 500\
+\th = tonumber(lUtils.getField(res,\"sample_height\") or lUtils.getField(res,\"preview_height\")) or 500\
 end\
 if not imgUrl then\
-\tlocal r2 = http.get(\"http://th-us1.terohost.com:25616/search?tags=\".. textutils.urlEncode(tags)..\"&limit=1&pid=1\")\
-\tif r2 then\
-\t\tlocal res = r2.readAll()\
-\t\tr2.close()\
-\t\timgUrl = lUtils.getField(res,\"sample_url\") or lUtils.getField(res,\"file_url\") or lUtils.getField(res,\"preview_url\")\
-\t\tw = tonumber(lUtils.getField(res,\"sample_width\") or lUtils.getField(res,\"preview_width\")) or 500\
-\t\th = tonumber(lUtils.getField(res,\"sample_height\") or lUtils.getField(res,\"preview_height\")) or 500\
-\telse\
-\t\tlUtils.popup(\"Error\", \"No connection\", 27, 9, {\"OK\"})\
-\t\treturn\
+\tlocal gUrl = \"https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=1&pid=0&tags=\" .. textutils.urlEncode(tags)\
+\tlocal r = http.get(gUrl, {[\"User-Agent\"] = \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"})\
+\tif r then\
+\t\tlocal body = r.readAll()\
+\t\tr.close()\
+\t\tlocal data = textutils.unserializeJSON(body)\
+\t\tif data then\
+\t\t\tlocal posts = data.post or data.posts\
+\t\t\tlocal post = posts and (posts[1] or (posts.file_url and posts))\
+\t\t\tif post then\
+\t\t\t\timgUrl = post.sample_url\
+\t\t\t\tif not imgUrl or imgUrl == \"\" or imgUrl:match(\"%.webm\") or imgUrl:match(\"%.mp4\") then imgUrl = post.file_url end\
+\t\t\t\tif not imgUrl or imgUrl == \"\" or imgUrl:match(\"%.webm\") or imgUrl:match(\"%.mp4\") then imgUrl = post.preview_url end\
+\t\t\t\tw, h = tonumber(post.sample_width or post.width) or 500, tonumber(post.sample_height or post.height) or 500\
+\t\t\tend\
+\t\tend\
 \tend\
 end\
 if not imgUrl then\
