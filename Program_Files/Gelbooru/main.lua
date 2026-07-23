@@ -102,7 +102,7 @@ local tID\
 local gpu = peripheral.find(\"directgpu\")\
 local gpuDisplay\
 if gpu then\
-\9gpuDisplay = gpu.autoDetectAndCreateDisplay()\
+\tpcall(function() gpuDisplay = gpu.autoDetectAndCreateDisplay() end)\
 end\
 \
 local function setPalette(palette)\
@@ -281,7 +281,6 @@ while true do\
     if not s.var.iBox.state then\
         \
     end\
-    os.sleep(0.05)\
 end\
 end\
 \
