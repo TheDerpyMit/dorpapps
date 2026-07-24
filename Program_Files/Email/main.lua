@@ -15,7 +15,7 @@ end
 
 local tArgs = { ... }
 if tArgs[1] == "load" then
-    return { name = "GMail", version = "3.1" }
+    return { name = "GMail", version = "3.2" }
 end
 if LevelOS and LevelOS.setTitle then
     LevelOS.setTitle("GMail")
@@ -62,6 +62,9 @@ local inputFields = {
 }
 local activeField = nil
 
+local composeScrollOffset = 0
+local detailScrollOffset = 0
+
 local w, h = term.getSize()
 local sidebarWidth = 14
 
@@ -92,6 +95,20 @@ local function saveState()
     if userEmail then
         emailCore.saveLocalMail(userEmail, emails)
     end
+end
+
+-- Add or update email in memory without duplicates
+local function addOrUpdateEmail(emailObj)
+    if not emailObj or not emailObj.id then return end
+    for i, msg in ipairs(emails) do
+        if msg.id == emailObj.id then
+            emails[i] = emailObj
+            saveState()
+            return
+        end
+    end
+    table.insert(emails, emailObj)
+    saveState()
 end
 
 -- Try connecting & authenticating with WebSocket server
@@ -276,6 +293,33 @@ local function getUnreadCount()
         end
     end
     return count
+end
+
+-- Split multiline compose text into wrapped visual rows
+local function getBodyWrappedLines(bodyText, boxWidth)
+    local visualRows = {}
+    local lineStart = 1
+    local len = #bodyText
+    while lineStart <= len + 1 do
+        local nl = bodyText:find("\n", lineStart, true)
+        local pEnd = nl and (nl - 1) or len
+        local paragraph = bodyText:sub(lineStart, pEnd)
+
+        if #paragraph == 0 then
+            table.insert(visualRows, "")
+        else
+            local pPos = 1
+            while pPos <= #paragraph do
+                table.insert(visualRows, paragraph:sub(pPos, pPos + boxWidth - 1))
+                pPos = pPos + boxWidth
+            end
+        end
+
+        if not nl then break end
+        lineStart = nl + 1
+    end
+    if #visualRows == 0 then visualRows = { "" } end
+    return visualRows
 end
 
 -- Draw Authentication (Login / Register) Screen
@@ -479,7 +523,7 @@ local function drawListView()
         local readDot = msg.read and " " or "\7"
 
         term.setCursorPos(listX + 1, y)
-        term.setTextColor(msg.read and colors.lightGray or colors.yellow)
+        term.setTextColor(msg.starred and colors.yellow or colors.lightGray)
         term.write(starSymbol .. " ")
         term.setTextColor(msg.read and colors.lightGray or colors.lime)
         term.write(readDot .. " ")
@@ -535,12 +579,28 @@ local function drawDetailView()
     term.setBackgroundColor(selectedEmail.archived and colors.lightBlue or colors.blue)
     term.setTextColor(colors.white)
     term.write(selectedEmail.archived and " [Unarchive] " or " [Archive] ")
-    
+
+    term.setBackgroundColor(selectedEmail.starred and colors.yellow or colors.gray)
+    term.setTextColor(selectedEmail.starred and colors.black or colors.white)
+    term.write(selectedEmail.starred and " [Starred] " or " [Star] ")
+
     term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.white)
     term.write(selectedEmail.read and " [Mark Unread] " or " [Mark Read] ")
     
-    term.setBackgroundColor(colors.red)
-    term.write(" [Delete] ")
+    if selectedEmail.deleted then
+        term.setBackgroundColor(colors.lime)
+        term.setTextColor(colors.black)
+        term.write(" [Restore] ")
+
+        term.setBackgroundColor(colors.red)
+        term.setTextColor(colors.white)
+        term.write(" [Delete Forever] ")
+    else
+        term.setBackgroundColor(colors.red)
+        term.setTextColor(colors.white)
+        term.write(" [Delete] ")
+    end
 
     -- Headers
     term.setCursorPos(listX + 1, 4)
@@ -571,22 +631,51 @@ local function drawDetailView()
     term.setTextColor(colors.lightGray)
     term.write(string.rep("\140", listWidth - 2))
 
-    -- Body text wrapping
-    local body = selectedEmail.body or ""
-    local y = 10
-    for line in body:gmatch("[^\r\n]+") do
-        while #line > 0 and y < (h - 1) do
-            local chunk = line:sub(1, listWidth - 3)
-            line = line:sub(listWidth - 2)
-            term.setCursorPos(listX + 1, y)
-            term.setTextColor(colors.white)
-            term.write(chunk)
-            y = y + 1
+    -- Body text wrapping with multi-line paragraph support and scrolling
+    local str = selectedEmail.body or ""
+    local lines = {}
+    local lineStart = 1
+    local len = #str
+    while lineStart <= len + 1 do
+        local nl = str:find("\n", lineStart, true)
+        local pEnd = nl and (nl - 1) or len
+        local line = str:sub(lineStart, pEnd):gsub("\r$", "")
+        table.insert(lines, line)
+        if not nl then break end
+        lineStart = nl + 1
+    end
+
+    local wrapWidth = listWidth - 3
+    local visualLines = {}
+    for _, line in ipairs(lines) do
+        if #line == 0 then
+            table.insert(visualLines, "")
+        else
+            while #line > 0 do
+                table.insert(visualLines, line:sub(1, wrapWidth))
+                line = line:sub(wrapWidth + 1)
+            end
         end
+    end
+
+    local viewHeight = h - 10
+    local maxScroll = math.max(0, #visualLines - viewHeight)
+    if detailScrollOffset > maxScroll then detailScrollOffset = maxScroll end
+    if detailScrollOffset < 0 then detailScrollOffset = 0 end
+
+    local y = 10
+    for r = 1, viewHeight do
+        local lineIdx = detailScrollOffset + r
+        if lineIdx > #visualLines then break end
+        term.setCursorPos(listX + 1, y)
+        term.setTextColor(colors.white)
+        term.setBackgroundColor(colors.black)
+        term.write(visualLines[lineIdx])
+        y = y + 1
     end
 end
 
--- Draw Compose View
+-- Draw Compose View (Fixed size paragraph box with scrolling)
 local function drawComposeView()
     local listX = sidebarWidth + 1
     local listWidth = w - sidebarWidth
@@ -622,22 +711,51 @@ local function drawComposeView()
     term.setCursorPos(listX + 1, 8)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.lightGray)
-    term.write("Message:")
+    term.write("Message (Scrollable Paragraph Box):")
 
-    -- Body Box
-    term.setCursorPos(listX + 1, 9)
-    term.setBackgroundColor(activeField == "body" and colors.white or colors.lightGray)
-    term.setTextColor(colors.black)
-    local bodyStr = inputFields.composeBody
-    term.write(" " .. bodyStr .. string.rep(" ", listWidth - #bodyStr - 5) .. " ")
+    -- Body Paragraph Box (Fixed size from Line 9 to h-3)
+    local boxYStart = 9
+    local boxYEnd = math.max(11, h - 3)
+    local boxHeight = boxYEnd - boxYStart + 1
+    local boxWidth = listWidth - 4
 
-    -- Action Buttons
-    term.setCursorPos(listX + 1, 12)
+    local bgCol = (activeField == "body") and colors.white or colors.lightGray
+    local fgCol = colors.black
+
+    local visualRows = getBodyWrappedLines(inputFields.composeBody, boxWidth)
+    local maxScroll = math.max(0, #visualRows - boxHeight)
+
+    -- Auto-scroll to follow cursor if active
+    if activeField == "body" then
+        local lastRowIdx = #visualRows
+        if lastRowIdx > composeScrollOffset + boxHeight then
+            composeScrollOffset = lastRowIdx - boxHeight
+        elseif lastRowIdx < composeScrollOffset + 1 then
+            composeScrollOffset = math.max(0, lastRowIdx - 1)
+        end
+    end
+
+    if composeScrollOffset > maxScroll then composeScrollOffset = maxScroll end
+    if composeScrollOffset < 0 then composeScrollOffset = 0 end
+
+    for r = 1, boxHeight do
+        local y = boxYStart + r - 1
+        term.setCursorPos(listX + 1, y)
+        term.setBackgroundColor(bgCol)
+        term.setTextColor(fgCol)
+        local rowIdx = composeScrollOffset + r
+        local lineStr = visualRows[rowIdx] or ""
+        term.write(" " .. lineStr .. string.rep(" ", boxWidth - #lineStr - 1))
+    end
+
+    -- Action Buttons (Fixed on Line boxYEnd + 2)
+    local btnY = math.min(h, boxYEnd + 2)
+    term.setCursorPos(listX + 1, btnY)
     term.setBackgroundColor(colors.lime)
     term.setTextColor(colors.black)
     term.write(" [ Send ] ")
 
-    term.setCursorPos(listX + 12, 12)
+    term.setCursorPos(listX + 12, btnY)
     term.setBackgroundColor(colors.lightGray)
     term.setTextColor(colors.black)
     term.write(" [ Cancel ] ")
@@ -650,8 +768,17 @@ local function drawComposeView()
         term.setCursorPos(listX + 10 + #inputFields.composeSubject, 6)
         term.setCursorBlink(true)
     elseif activeField == "body" then
-        term.setCursorPos(listX + 2 + #inputFields.composeBody, 9)
-        term.setCursorBlink(true)
+        local lastRowIdx = #visualRows
+        local cursorRowInBox = lastRowIdx - composeScrollOffset
+        local lastRowStr = visualRows[lastRowIdx] or ""
+        local cursorX = listX + 2 + #lastRowStr
+        local cursorY = boxYStart + cursorRowInBox - 1
+        if cursorY >= boxYStart and cursorY <= boxYEnd then
+            term.setCursorPos(cursorX, cursorY)
+            term.setCursorBlink(true)
+        else
+            term.setCursorBlink(false)
+        end
     else
         term.setCursorBlink(false)
     end
@@ -685,7 +812,7 @@ tryAutoLogin()
 drawUI()
 
 -- Timer to poll background WebSocket messages
-local wsTimer = os.startTimer(0.5)
+local wsTimer = os.startTimer(1.0)
 
 while true do
     local e = { os.pullEvent() }
@@ -696,33 +823,51 @@ while true do
         drawUI()
     end
 
-    -- Poll incoming WebSocket messages
+    -- Reset timer for background loop
     if eventType == "timer" and e[2] == wsTimer then
-        if mode == "app" and emailCore.ws then
-            local msg = emailCore.receiveMessage(0)
-            if msg then
-                if msg.event == "newemail" and msg.data then
-                    table.insert(emails, msg.data)
-                    saveState()
-                    drawUI()
-                elseif msg.event == "list_response" and type(msg.emails) == "table" then
-                    emails = msg.emails
-                    saveState()
-                    drawUI()
-                end
-            end
-        end
-        wsTimer = os.startTimer(0.5)
+        wsTimer = os.startTimer(1.0)
     end
 
-    -- WebSocket direct event
+    -- Mouse Scroll Event
+    if eventType == "mouse_scroll" then
+        local dir = e[2]
+        local mx, my = e[3], e[4]
+        if mode == "app" then
+            if currentView == "compose" then
+                local boxYStart = 9
+                local boxYEnd = math.max(11, h - 3)
+                local boxHeight = boxYEnd - boxYStart + 1
+                local boxWidth = sidebarWidth and (w - sidebarWidth - 4) or 30
+                local visualRows = getBodyWrappedLines(inputFields.composeBody, boxWidth)
+                local maxScroll = math.max(0, #visualRows - boxHeight)
+
+                if dir < 0 then
+                    composeScrollOffset = math.max(0, composeScrollOffset - 1)
+                else
+                    composeScrollOffset = math.min(maxScroll, composeScrollOffset + 1)
+                end
+                drawUI()
+            elseif currentView == "detail" then
+                if dir < 0 then
+                    detailScrollOffset = math.max(0, detailScrollOffset - 1)
+                else
+                    detailScrollOffset = detailScrollOffset + 1
+                end
+                drawUI()
+            end
+        end
+    end
+
+    -- WebSocket direct event (e[3] contains JSON message payload string)
     if eventType == "websocket_message" then
-        if mode == "app" and type(e[2]) == "string" then
-            local msg = textutils.unserializeJSON(e[2])
+        if mode == "app" and type(e[3]) == "string" then
+            local msg = textutils.unserializeJSON(e[3])
             if msg then
                 if msg.event == "newemail" and msg.data then
-                    table.insert(emails, msg.data)
-                    saveState()
+                    addOrUpdateEmail(msg.data)
+                    drawUI()
+                elseif msg.event == "send_response" and msg.email then
+                    addOrUpdateEmail(msg.email)
                     drawUI()
                 elseif msg.event == "list_response" and type(msg.emails) == "table" then
                     emails = msg.emails
@@ -769,7 +914,6 @@ while true do
         else
             -- Main App Header Click (Logout Button)
             if my == 1 then
-                local userBadge = "<" .. (userEmail or "") .. "> "
                 local logoutBtn = "[ Logout ]"
                 local logoutX = w - #logoutBtn + 1
                 if mx >= logoutX then
@@ -782,6 +926,7 @@ while true do
                 if my == 3 then
                     currentView = "compose"
                     activeField = "to"
+                    composeScrollOffset = 0
                     drawUI()
                 elseif my >= 5 and my <= 9 then
                     local tabIndex = my - 4
@@ -800,21 +945,39 @@ while true do
                     local filtered = getFilteredEmails()
                     local clickedIdx = my - 2
                     if clickedIdx >= 1 and clickedIdx <= #filtered then
-                        selectedEmail = filtered[clickedIdx]
-                        selectedEmail.read = true
-                        saveState()
+                        local targetMail = filtered[clickedIdx]
+                        if mx >= listX + 1 and mx <= listX + 3 then
+                            -- Star icon click toggle
+                            targetMail.starred = not targetMail.starred
+                            saveState()
+                            if authToken and emailCore.ws then
+                                emailCore.sendPayload({
+                                    event = "update_email",
+                                    token = authToken,
+                                    id = targetMail.id,
+                                    updates = { starred = targetMail.starred }
+                                })
+                            end
+                            drawUI()
+                        else
+                            -- Open detail view
+                            selectedEmail = targetMail
+                            selectedEmail.read = true
+                            detailScrollOffset = 0
+                            saveState()
 
-                        -- Send update to server
-                        if authToken then
-                            emailCore.sendPayload({
-                                event = "update_email",
-                                token = authToken,
-                                id = selectedEmail.id,
-                                updates = { read = true }
-                            })
+                            -- Send update to server
+                            if authToken and emailCore.ws then
+                                emailCore.sendPayload({
+                                    event = "update_email",
+                                    token = authToken,
+                                    id = selectedEmail.id,
+                                    updates = { read = true }
+                                })
+                            end
+                            currentView = "detail"
+                            drawUI()
                         end
-                        currentView = "detail"
-                        drawUI()
                     end
 
                 elseif currentView == "detail" then
@@ -828,7 +991,7 @@ while true do
                             if selectedEmail then
                                 selectedEmail.archived = not selectedEmail.archived
                                 saveState()
-                                if authToken then
+                                if authToken and emailCore.ws then
                                     emailCore.sendPayload({
                                         event = "update_email",
                                         token = authToken,
@@ -840,12 +1003,27 @@ while true do
                                 currentView = "list"
                                 drawUI()
                             end
-                        elseif mx >= listX + 25 and mx <= listX + 39 then
+                        elseif mx >= listX + 25 and mx <= listX + 35 then
+                            -- Star / Unstar
+                            if selectedEmail then
+                                selectedEmail.starred = not selectedEmail.starred
+                                saveState()
+                                if authToken and emailCore.ws then
+                                    emailCore.sendPayload({
+                                        event = "update_email",
+                                        token = authToken,
+                                        id = selectedEmail.id,
+                                        updates = { starred = selectedEmail.starred }
+                                    })
+                                end
+                                drawUI()
+                            end
+                        elseif mx >= listX + 37 and mx <= listX + 51 then
                             -- Mark Read / Unread
                             if selectedEmail then
                                 selectedEmail.read = not selectedEmail.read
                                 saveState()
-                                if authToken then
+                                if authToken and emailCore.ws then
                                     emailCore.sendPayload({
                                         event = "update_email",
                                         token = authToken,
@@ -855,37 +1033,73 @@ while true do
                                 end
                                 drawUI()
                             end
-                        elseif mx >= listX + 41 and mx <= listX + 49 then
-                            -- Delete / Trash
+                        elseif mx >= listX + 53 then
+                            -- Delete / Restore / Delete Forever
                             if selectedEmail then
-                                selectedEmail.deleted = true
-                                saveState()
-                                if authToken then
-                                    emailCore.sendPayload({
-                                        event = "update_email",
-                                        token = authToken,
-                                        id = selectedEmail.id,
-                                        updates = { deleted = true }
-                                    })
+                                if selectedEmail.deleted then
+                                    if mx <= listX + 64 then
+                                        -- Restore
+                                        selectedEmail.deleted = false
+                                        saveState()
+                                        if authToken and emailCore.ws then
+                                            emailCore.sendPayload({
+                                                event = "update_email",
+                                                token = authToken,
+                                                id = selectedEmail.id,
+                                                updates = { deleted = false }
+                                            })
+                                        end
+                                        _G.lUtils.popup("Gmail", "Email restored.", 28, 9, { "OK" })
+                                        currentView = "list"
+                                        drawUI()
+                                    else
+                                        -- Delete Forever
+                                        for idx, m in ipairs(emails) do
+                                            if m.id == selectedEmail.id then
+                                                table.remove(emails, idx)
+                                                break
+                                            end
+                                        end
+                                        saveState()
+                                        _G.lUtils.popup("Gmail", "Email permanently deleted.", 32, 9, { "OK" })
+                                        currentView = "list"
+                                        drawUI()
+                                    end
+                                else
+                                    -- Delete to trash
+                                    selectedEmail.deleted = true
+                                    saveState()
+                                    if authToken and emailCore.ws then
+                                        emailCore.sendPayload({
+                                            event = "update_email",
+                                            token = authToken,
+                                            id = selectedEmail.id,
+                                            updates = { deleted = true }
+                                        })
+                                    end
+                                    _G.lUtils.popup("Gmail", "Email moved to Trash.", 30, 9, { "OK" })
+                                    currentView = "list"
+                                    drawUI()
                                 end
-                                _G.lUtils.popup("Gmail", "Email moved to Trash.", 30, 9, { "OK" })
-                                currentView = "list"
-                                drawUI()
                             end
                         end
                     end
 
                 elseif currentView == "compose" then
+                    local boxYStart = 9
+                    local boxYEnd = math.max(11, h - 3)
+                    local btnY = math.min(h, boxYEnd + 2)
+
                     if my == 4 then
                         activeField = "to"
                         drawUI()
                     elseif my == 6 then
                         activeField = "subject"
                         drawUI()
-                    elseif my == 8 or my == 9 then
+                    elseif my >= boxYStart and my <= boxYEnd then
                         activeField = "body"
                         drawUI()
-                    elseif my == 12 then
+                    elseif my == btnY then
                         if mx >= listX + 1 and mx <= listX + 10 then
                             -- Send Button
                             if inputFields.composeTo:gsub("%s+", "") == "" then
@@ -906,28 +1120,29 @@ while true do
                                     deleted = false
                                 }
 
+                                addOrUpdateEmail(newMsg)
+
                                 -- Send WebSocket event to server
-                                if authToken then
+                                if authToken and emailCore.ws then
                                     emailCore.sendPayload({
                                         event = "newemail",
                                         token = authToken,
                                         data = newMsg
                                     })
-                                else
-                                    table.insert(emails, newMsg)
-                                    saveState()
                                 end
 
                                 _G.lUtils.popup("Gmail", "Email sent successfully to " .. targetTo, 36, 9, { "OK" })
                                 inputFields = { composeTo = "", composeSubject = "", composeBody = "" }
                                 currentView = "list"
                                 activeTab = "sent"
+                                composeScrollOffset = 0
                                 drawUI()
                             end
                         elseif mx >= listX + 12 and mx <= listX + 22 then
                             -- Cancel Button
                             inputFields = { composeTo = "", composeSubject = "", composeBody = "" }
                             currentView = "list"
+                            composeScrollOffset = 0
                             drawUI()
                         end
                     end
@@ -984,6 +1199,21 @@ while true do
                 elseif activeField == "body" then
                     inputFields.composeBody = inputFields.composeBody:sub(1, #inputFields.composeBody - 1)
                 end
+                drawUI()
+            elseif key == keys.enter or key == keys.numPadEnter then
+                if activeField == "to" then
+                    activeField = "subject"
+                elseif activeField == "subject" then
+                    activeField = "body"
+                elseif activeField == "body" then
+                    inputFields.composeBody = inputFields.composeBody .. "\n"
+                end
+                drawUI()
+            elseif key == keys.up and activeField == "body" then
+                composeScrollOffset = math.max(0, composeScrollOffset - 1)
+                drawUI()
+            elseif key == keys.down and activeField == "body" then
+                composeScrollOffset = composeScrollOffset + 1
                 drawUI()
             elseif key == keys.tab then
                 if activeField == "to" then activeField = "subject"
