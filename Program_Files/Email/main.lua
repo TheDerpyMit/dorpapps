@@ -15,7 +15,7 @@ end
 
 local tArgs = { ... }
 if tArgs[1] == "load" then
-    return { name = "GMail", version = "3.2" }
+    return { name = "GMail", version = "3.3" }
 end
 if LevelOS and LevelOS.setTitle then
     LevelOS.setTitle("GMail")
@@ -63,6 +63,7 @@ local inputFields = {
 local activeField = nil
 
 local composeScrollOffset = 0
+local composeCursorPos = 1
 local detailScrollOffset = 0
 
 local w, h = term.getSize()
@@ -320,6 +321,67 @@ local function getBodyWrappedLines(bodyText, boxWidth)
     end
     if #visualRows == 0 then visualRows = { "" } end
     return visualRows
+end
+
+-- Calculate 2D visual cursor (targetRow, targetCol) for character position in bodyText
+local function getVisualCursor(bodyText, boxWidth, cursorPos)
+    local r, c = 1, 1
+    local targetRow, targetCol = 1, 1
+    if cursorPos <= 1 then
+        return 1, 1
+    end
+    for i = 1, #bodyText do
+        if i == cursorPos then
+            targetRow, targetCol = r, c
+        end
+        local char = bodyText:sub(i, i)
+        if char == "\n" then
+            r = r + 1
+            c = 1
+        else
+            if c >= boxWidth then
+                r = r + 1
+                c = 1
+            else
+                c = c + 1
+            end
+        end
+    end
+    if cursorPos >= #bodyText + 1 then
+        targetRow, targetCol = r, c
+    end
+    return targetRow, targetCol
+end
+
+-- Find character index in bodyText corresponding to visual row and column
+local function getCharIndexFromVisual(bodyText, boxWidth, targetRow, targetCol)
+    local r, c = 1, 1
+    if targetRow <= 1 and targetCol <= 1 then return 1 end
+    
+    for i = 1, #bodyText do
+        if r == targetRow and c == targetCol then
+            return i
+        end
+        local char = bodyText:sub(i, i)
+        if char == "\n" then
+            if r == targetRow then
+                return i
+            end
+            r = r + 1
+            c = 1
+        else
+            if c >= boxWidth then
+                if r == targetRow then
+                    return i
+                end
+                r = r + 1
+                c = 1
+            else
+                c = c + 1
+            end
+        end
+    end
+    return #bodyText + 1
 end
 
 -- Draw Authentication (Login / Register) Screen
@@ -675,7 +737,7 @@ local function drawDetailView()
     end
 end
 
--- Draw Compose View (Fixed size paragraph box with scrolling)
+-- Draw Compose View
 local function drawComposeView()
     local listX = sidebarWidth + 1
     local listWidth = w - sidebarWidth
@@ -711,7 +773,7 @@ local function drawComposeView()
     term.setCursorPos(listX + 1, 8)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.lightGray)
-    term.write("Message (Scrollable Paragraph Box):")
+    term.write("Message:")
 
     -- Body Paragraph Box (Fixed size from Line 9 to h-3)
     local boxYStart = 9
@@ -722,16 +784,23 @@ local function drawComposeView()
     local bgCol = (activeField == "body") and colors.white or colors.lightGray
     local fgCol = colors.black
 
+    -- Clamp composeCursorPos
+    if composeCursorPos < 1 then composeCursorPos = 1 end
+    if composeCursorPos > #inputFields.composeBody + 1 then
+        composeCursorPos = #inputFields.composeBody + 1
+    end
+
     local visualRows = getBodyWrappedLines(inputFields.composeBody, boxWidth)
     local maxScroll = math.max(0, #visualRows - boxHeight)
 
-    -- Auto-scroll to follow cursor if active
+    local curRow, curCol = getVisualCursor(inputFields.composeBody, boxWidth, composeCursorPos)
+
+    -- Auto-scroll viewport to follow active cursor
     if activeField == "body" then
-        local lastRowIdx = #visualRows
-        if lastRowIdx > composeScrollOffset + boxHeight then
-            composeScrollOffset = lastRowIdx - boxHeight
-        elseif lastRowIdx < composeScrollOffset + 1 then
-            composeScrollOffset = math.max(0, lastRowIdx - 1)
+        if curRow > composeScrollOffset + boxHeight then
+            composeScrollOffset = curRow - boxHeight
+        elseif curRow < composeScrollOffset + 1 then
+            composeScrollOffset = math.max(0, curRow - 1)
         end
     end
 
@@ -768,10 +837,8 @@ local function drawComposeView()
         term.setCursorPos(listX + 10 + #inputFields.composeSubject, 6)
         term.setCursorBlink(true)
     elseif activeField == "body" then
-        local lastRowIdx = #visualRows
-        local cursorRowInBox = lastRowIdx - composeScrollOffset
-        local lastRowStr = visualRows[lastRowIdx] or ""
-        local cursorX = listX + 2 + #lastRowStr
+        local cursorRowInBox = curRow - composeScrollOffset
+        local cursorX = listX + 1 + curCol
         local cursorY = boxYStart + cursorRowInBox - 1
         if cursorY >= boxYStart and cursorY <= boxYEnd then
             term.setCursorPos(cursorX, cursorY)
@@ -834,10 +901,11 @@ while true do
         local mx, my = e[3], e[4]
         if mode == "app" then
             if currentView == "compose" then
+                local listX = sidebarWidth + 1
                 local boxYStart = 9
                 local boxYEnd = math.max(11, h - 3)
                 local boxHeight = boxYEnd - boxYStart + 1
-                local boxWidth = sidebarWidth and (w - sidebarWidth - 4) or 30
+                local boxWidth = w - sidebarWidth - 4
                 local visualRows = getBodyWrappedLines(inputFields.composeBody, boxWidth)
                 local maxScroll = math.max(0, #visualRows - boxHeight)
 
@@ -927,6 +995,7 @@ while true do
                     currentView = "compose"
                     activeField = "to"
                     composeScrollOffset = 0
+                    composeCursorPos = #inputFields.composeBody + 1
                     drawUI()
                 elseif my >= 5 and my <= 9 then
                     local tabIndex = my - 4
@@ -1088,6 +1157,7 @@ while true do
                 elseif currentView == "compose" then
                     local boxYStart = 9
                     local boxYEnd = math.max(11, h - 3)
+                    local boxWidth = w - sidebarWidth - 4
                     local btnY = math.min(h, boxYEnd + 2)
 
                     if my == 4 then
@@ -1098,6 +1168,9 @@ while true do
                         drawUI()
                     elseif my >= boxYStart and my <= boxYEnd then
                         activeField = "body"
+                        local clickedRow = composeScrollOffset + (my - boxYStart + 1)
+                        local clickedCol = math.max(1, math.min(boxWidth, mx - listX - 1))
+                        composeCursorPos = getCharIndexFromVisual(inputFields.composeBody, boxWidth, clickedRow, clickedCol)
                         drawUI()
                     elseif my == btnY then
                         if mx >= listX + 1 and mx <= listX + 10 then
@@ -1136,6 +1209,7 @@ while true do
                                 currentView = "list"
                                 activeTab = "sent"
                                 composeScrollOffset = 0
+                                composeCursorPos = 1
                                 drawUI()
                             end
                         elseif mx >= listX + 12 and mx <= listX + 22 then
@@ -1143,6 +1217,7 @@ while true do
                             inputFields = { composeTo = "", composeSubject = "", composeBody = "" }
                             currentView = "list"
                             composeScrollOffset = 0
+                            composeCursorPos = 1
                             drawUI()
                         end
                     end
@@ -1166,7 +1241,11 @@ while true do
             elseif activeField == "subject" then
                 inputFields.composeSubject = inputFields.composeSubject .. textInput
             elseif activeField == "body" then
-                inputFields.composeBody = inputFields.composeBody .. textInput
+                local body = inputFields.composeBody
+                local head = body:sub(1, composeCursorPos - 1)
+                local tail = body:sub(composeCursorPos)
+                inputFields.composeBody = head .. textInput .. tail
+                composeCursorPos = composeCursorPos + #textInput
             end
             drawUI()
         end
@@ -1191,13 +1270,22 @@ while true do
             end
 
         elseif mode == "app" and currentView == "compose" and activeField then
+            local listX = sidebarWidth + 1
+            local boxWidth = w - sidebarWidth - 4
+
             if key == keys.backspace then
                 if activeField == "to" then
                     inputFields.composeTo = inputFields.composeTo:sub(1, #inputFields.composeTo - 1)
                 elseif activeField == "subject" then
                     inputFields.composeSubject = inputFields.composeSubject:sub(1, #inputFields.composeSubject - 1)
                 elseif activeField == "body" then
-                    inputFields.composeBody = inputFields.composeBody:sub(1, #inputFields.composeBody - 1)
+                    if composeCursorPos > 1 then
+                        local body = inputFields.composeBody
+                        local head = body:sub(1, composeCursorPos - 2)
+                        local tail = body:sub(composeCursorPos)
+                        inputFields.composeBody = head .. tail
+                        composeCursorPos = composeCursorPos - 1
+                    end
                 end
                 drawUI()
             elseif key == keys.enter or key == keys.numPadEnter then
@@ -1205,20 +1293,48 @@ while true do
                     activeField = "subject"
                 elseif activeField == "subject" then
                     activeField = "body"
+                    composeCursorPos = #inputFields.composeBody + 1
                 elseif activeField == "body" then
-                    inputFields.composeBody = inputFields.composeBody .. "\n"
+                    local body = inputFields.composeBody
+                    local head = body:sub(1, composeCursorPos - 1)
+                    local tail = body:sub(composeCursorPos)
+                    inputFields.composeBody = head .. "\n" .. tail
+                    composeCursorPos = composeCursorPos + 1
                 end
                 drawUI()
+            elseif key == keys.left and activeField == "body" then
+                composeCursorPos = math.max(1, composeCursorPos - 1)
+                drawUI()
+            elseif key == keys.right and activeField == "body" then
+                composeCursorPos = math.min(#inputFields.composeBody + 1, composeCursorPos + 1)
+                drawUI()
             elseif key == keys.up and activeField == "body" then
-                composeScrollOffset = math.max(0, composeScrollOffset - 1)
+                local curRow, curCol = getVisualCursor(inputFields.composeBody, boxWidth, composeCursorPos)
+                if curRow > 1 then
+                    composeCursorPos = getCharIndexFromVisual(inputFields.composeBody, boxWidth, curRow - 1, curCol)
+                end
                 drawUI()
             elseif key == keys.down and activeField == "body" then
-                composeScrollOffset = composeScrollOffset + 1
+                local curRow, curCol = getVisualCursor(inputFields.composeBody, boxWidth, composeCursorPos)
+                composeCursorPos = getCharIndexFromVisual(inputFields.composeBody, boxWidth, curRow + 1, curCol)
+                drawUI()
+            elseif key == keys.home and activeField == "body" then
+                local curRow = getVisualCursor(inputFields.composeBody, boxWidth, composeCursorPos)
+                composeCursorPos = getCharIndexFromVisual(inputFields.composeBody, boxWidth, curRow, 1)
+                drawUI()
+            elseif key == keys.pEnd and activeField == "body" then
+                local curRow = getVisualCursor(inputFields.composeBody, boxWidth, composeCursorPos)
+                composeCursorPos = getCharIndexFromVisual(inputFields.composeBody, boxWidth, curRow, boxWidth)
                 drawUI()
             elseif key == keys.tab then
-                if activeField == "to" then activeField = "subject"
-                elseif activeField == "subject" then activeField = "body"
-                elseif activeField == "body" then activeField = "to" end
+                if activeField == "to" then
+                    activeField = "subject"
+                elseif activeField == "subject" then
+                    activeField = "body"
+                    composeCursorPos = #inputFields.composeBody + 1
+                elseif activeField == "body" then
+                    activeField = "to"
+                end
                 drawUI()
             end
         end
