@@ -160,7 +160,7 @@ local function submitAuth()
         return
     end
 
-    if not isConnected then
+    if not emailCore.ws or not isConnected then
         if not initServerConnection() then
             return
         end
@@ -176,8 +176,19 @@ local function submitAuth()
         password = authInputs.password
     }
     
-    emailCore.sendPayload(payload)
-    local resp = emailCore.receiveMessage(4)
+    local sendOk, sendErr = emailCore.sendPayload(payload)
+    if not sendOk then
+        if initServerConnection() then
+            sendOk, sendErr = emailCore.sendPayload(payload)
+        end
+    end
+
+    if not sendOk then
+        authError = "Connection error: " .. tostring(sendErr or "socket closed")
+        return
+    end
+
+    local resp = emailCore.receiveMessage(5)
 
     if not resp then
         authError = "No response from server. Try again."
