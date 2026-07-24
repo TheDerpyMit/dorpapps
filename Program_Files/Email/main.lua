@@ -665,7 +665,6 @@ drawUI()
 local wsTimer = os.startTimer(0.5)
 
 while true do
-    sleep(0)
     local e = { os.pullEvent() }
     local eventType = e[1]
 
