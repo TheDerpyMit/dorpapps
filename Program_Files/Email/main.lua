@@ -101,6 +101,7 @@ end
 -- Add or update email in memory without duplicates
 local function addOrUpdateEmail(emailObj)
     if not emailObj or not emailObj.id then return end
+    emails = emailCore.makeMutable(emails or {})
     for i, msg in ipairs(emails) do
         if msg.id == emailObj.id then
             emails[i] = emailObj
@@ -153,10 +154,10 @@ local function tryAutoLogin()
         emailCore.sendPayload({ event = "list", token = authToken })
         local listResp = emailCore.receiveMessage(2)
         if listResp and listResp.event == "list_response" and listResp.emails then
-            emails = listResp.emails
+            emails = emailCore.makeMutable(listResp.emails)
             saveState()
         else
-            emails = emailCore.loadLocalMail(userEmail) or {}
+            emails = emailCore.makeMutable(emailCore.loadLocalMail(userEmail) or {})
         end
     else
         -- Token expired or invalid
@@ -234,10 +235,10 @@ local function submitAuth()
         emailCore.sendPayload({ event = "list", token = authToken })
         local listResp = emailCore.receiveMessage(2)
         if listResp and listResp.event == "list_response" and listResp.emails then
-            emails = listResp.emails
+            emails = emailCore.makeMutable(listResp.emails)
             saveState()
         else
-            emails = emailCore.loadLocalMail(userEmail) or {}
+            emails = emailCore.makeMutable(emailCore.loadLocalMail(userEmail) or {})
         end
     else
         authError = resp.error or "Authentication failed."
@@ -929,7 +930,7 @@ while true do
     -- WebSocket direct event (e[3] contains JSON message payload string)
     if eventType == "websocket_message" then
         if mode == "app" and type(e[3]) == "string" then
-            local msg = textutils.unserializeJSON(e[3])
+            local msg = emailCore.unserializeJSON(e[3])
             if msg then
                 if msg.event == "newemail" and msg.data then
                     addOrUpdateEmail(msg.data)
@@ -938,7 +939,7 @@ while true do
                     addOrUpdateEmail(msg.email)
                     drawUI()
                 elseif msg.event == "list_response" and type(msg.emails) == "table" then
-                    emails = msg.emails
+                    emails = emailCore.makeMutable(msg.emails)
                     saveState()
                     drawUI()
                 end

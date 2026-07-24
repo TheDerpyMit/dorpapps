@@ -6,6 +6,31 @@ local emailCore = {}
 emailCore.serverURL = "ws://th-us1.terohost.com:25616"
 emailCore.ws = nil
 
+-- Recursively convert textutils.empty_json_array into mutable tables
+function emailCore.makeMutable(val)
+    if val == textutils.empty_json_array then
+        return {}
+    end
+    if type(val) == "table" then
+        local res = {}
+        for k, v in pairs(val) do
+            res[k] = emailCore.makeMutable(v)
+        end
+        return res
+    end
+    return val
+end
+
+-- Safely unserialize JSON and make the resulting structure fully mutable
+function emailCore.unserializeJSON(str)
+    if not str or type(str) ~= "string" then return nil end
+    local ok, res = pcall(textutils.unserializeJSON, str)
+    if ok and res ~= nil then
+        return emailCore.makeMutable(res)
+    end
+    return nil
+end
+
 -- Save Auth Token locally so user stays logged in
 function emailCore.saveAuth(email, token)
     local dir = "User/EmailData"
@@ -26,7 +51,7 @@ function emailCore.loadAuth()
     if f then
         local content = f.readAll()
         f.close()
-        local data = textutils.unserializeJSON(content)
+        local data = emailCore.unserializeJSON(content)
         if data and data.email and data.token then
             return data
         end
@@ -88,7 +113,7 @@ function emailCore.receiveMessage(timeout)
     if not emailCore.ws then return nil end
     local ok, msg = pcall(function() return emailCore.ws.receive(timeout) end)
     if ok and msg then
-        local data = textutils.unserializeJSON(msg)
+        local data = emailCore.unserializeJSON(msg)
         return data
     end
     return nil
@@ -115,7 +140,7 @@ function emailCore.loadLocalMail(userEmail)
     if f then
         local content = f.readAll()
         f.close()
-        return textutils.unserializeJSON(content)
+        return emailCore.unserializeJSON(content)
     end
     return nil
 end
