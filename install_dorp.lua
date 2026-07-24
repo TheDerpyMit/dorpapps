@@ -73,7 +73,12 @@ for _, dl in ipairs(downloads) do
         fs.makeDir(dir)
     end
     print("  Downloading: " .. dl.dest)
-    local res = http.get(dl.url .. "?cb=" .. math.random(1, 100000), nil, true) -- binary download mode
+    local headers = {
+        ["Cache-Control"] = "no-cache, no-store, must-revalidate",
+        ["Pragma"] = "no-cache"
+    }
+    local ts = (os.epoch and os.epoch("utc")) or math.random(100000, 999999)
+    local res = http.get(dl.url .. "?ts=" .. ts .. "_" .. math.random(1000, 9999), headers, true)
     if res then
         local f = fs.open(dl.dest, "wb")
         f.write(res.readAll())
