@@ -1,6 +1,6 @@
 -- Program_Files/Email/main.lua
--- Modern Gmail Application for LevelOS & ComputerCraft
--- Features: WebSocket Server Sync, User Authentication (Login/Register), Persistence, Archive/Read/Starred/Trash/Compose
+-- Modern Gmail Application for DorpOS & ComputerCraft
+-- Features: WebSocket Server Sync (@dorp.com domain), User Authentication (Login/Register), Persistence, Archive/Read/Starred/Trash/Compose
 
 if not _G.lUtils then shell.run("LevelOS/startup/lUtils") end
 
@@ -15,10 +15,21 @@ end
 
 local tArgs = { ... }
 if tArgs[1] == "load" then
-    return { name = "GMail", version = "3.0" }
+    return { name = "GMail", version = "3.1" }
 end
 if LevelOS and LevelOS.setTitle then
     LevelOS.setTitle("GMail")
+end
+
+-- Normalize handles to @dorp.com
+local function normalizeEmail(addr)
+    if not addr or addr:gsub("%s+", "") == "" then return "" end
+    addr = addr:gsub("%s+", ""):lower()
+    local atIdx = addr:find("@")
+    if atIdx then
+        addr = addr:sub(1, atIdx - 1)
+    end
+    return addr .. "@dorp.com"
 end
 
 -- App Mode State: "login" or "app"
@@ -139,8 +150,9 @@ end
 
 -- Process Login or Registration Submit
 local function submitAuth()
-    if authInputs.email:gsub("%s+", "") == "" then
-        authError = "Please enter an email or username."
+    local rawAlias = authInputs.email:gsub("%s+", "")
+    if rawAlias == "" then
+        authError = "Please enter an email username."
         return
     end
     if authInputs.password == "" then
@@ -156,9 +168,11 @@ local function submitAuth()
 
     authError = "Authenticating..."
     
+    local fullEmail = normalizeEmail(rawAlias)
+
     local payload = {
         event = authMode,
-        email = authInputs.email,
+        email = fullEmail,
         password = authInputs.password
     }
     
@@ -213,7 +227,7 @@ local function getFilteredEmails()
     local filtered = {}
     for _, msg in ipairs(emails) do
         if activeTab == "inbox" then
-            if not msg.archived and not msg.deleted and (msg.to == userEmail or msg.to == "all@tuah") then
+            if not msg.archived and not msg.deleted and (msg.to == userEmail or msg.to == "all@dorp.com") then
                 table.insert(filtered, msg)
             end
         elseif activeTab == "archive" then
@@ -242,7 +256,7 @@ end
 local function getUnreadCount()
     local count = 0
     for _, msg in ipairs(emails) do
-        if not msg.read and not msg.archived and not msg.deleted and (msg.to == userEmail or msg.to == "all@tuah") then
+        if not msg.read and not msg.archived and not msg.deleted and (msg.to == userEmail or msg.to == "all@dorp.com") then
             count = count + 1
         end
     end
@@ -261,7 +275,7 @@ local function drawAuthScreen()
     term.setTextColor(colors.white)
     term.clearLine()
     term.setCursorPos(2, 1)
-    term.write("M LevelOS GMail - Authentication")
+    term.write("M GMail - Authentication")
 
     -- Server Info
     term.setCursorPos(w - 18, 1)
@@ -287,7 +301,7 @@ local function drawAuthScreen()
     term.setCursorPos(boxX, startY + 3)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.lightGray)
-    term.write("Email Address / Handle:")
+    term.write("Username / Alias (@dorp.com):")
 
     -- Email Field Box
     term.setCursorPos(boxX, startY + 4)
@@ -295,6 +309,15 @@ local function drawAuthScreen()
     term.setTextColor(colors.black)
     local emailVal = authInputs.email
     term.write(" " .. emailVal .. string.rep(" ", boxWidth - #emailVal - 2) .. " ")
+
+    -- Preview Full Address
+    if #emailVal > 0 then
+        term.setCursorPos(boxX, startY + 5)
+        term.setBackgroundColor(colors.black)
+        term.setTextColor(colors.yellow)
+        local fullPreview = normalizeEmail(emailVal)
+        term.write(" -> " .. fullPreview:sub(1, boxWidth - 4))
+    end
 
     -- Password Label
     term.setCursorPos(boxX, startY + 6)
@@ -322,6 +345,17 @@ local function drawAuthScreen()
         term.setBackgroundColor(colors.black)
         term.setTextColor(colors.red)
         term.write(authError:sub(1, boxWidth))
+    end
+
+    -- Position cursor and enable blink for active input field
+    if activeAuthField == "email" then
+        term.setCursorPos(math.min(boxX + 1 + #authInputs.email, boxX + boxWidth - 2), startY + 4)
+        term.setCursorBlink(true)
+    elseif activeAuthField == "password" then
+        term.setCursorPos(math.min(boxX + 1 + #authInputs.password, boxX + boxWidth - 2), startY + 7)
+        term.setCursorBlink(true)
+    else
+        term.setCursorBlink(false)
     end
 end
 
@@ -545,11 +579,11 @@ local function drawComposeView()
     term.setCursorPos(listX + 1, 4)
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.lightGray)
-    term.write("To: ")
+    term.write("To Alias: ")
     term.setBackgroundColor(activeField == "to" and colors.white or colors.lightGray)
     term.setTextColor(colors.black)
     local toStr = inputFields.composeTo
-    term.write(" " .. toStr .. string.rep(" ", listWidth - #toStr - 8) .. " ")
+    term.write(" " .. toStr .. string.rep(" ", listWidth - #toStr - 13) .. " ")
 
     -- Subject Field
     term.setCursorPos(listX + 1, 6)
@@ -584,6 +618,20 @@ local function drawComposeView()
     term.setBackgroundColor(colors.lightGray)
     term.setTextColor(colors.black)
     term.write(" [ Cancel ] ")
+
+    -- Set cursor for compose view
+    if activeField == "to" then
+        term.setCursorPos(listX + 12 + #inputFields.composeTo, 4)
+        term.setCursorBlink(true)
+    elseif activeField == "subject" then
+        term.setCursorPos(listX + 10 + #inputFields.composeSubject, 6)
+        term.setCursorBlink(true)
+    elseif activeField == "body" then
+        term.setCursorPos(listX + 2 + #inputFields.composeBody, 9)
+        term.setCursorBlink(true)
+    else
+        term.setCursorBlink(false)
+    end
 end
 
 -- Render Full UI
@@ -683,13 +731,13 @@ while true do
                     authError = ""
                     drawUI()
                 end
-            elseif my == startY + 4 then
+            elseif my == startY + 3 or my == startY + 4 or my == startY + 5 then
                 activeAuthField = "email"
                 drawUI()
-            elseif my == startY + 7 then
+            elseif my == startY + 6 or my == startY + 7 then
                 activeAuthField = "password"
                 drawUI()
-            elseif my == startY + 10 then
+            elseif my >= startY + 9 and my <= startY + 11 then
                 if mx >= boxX and mx <= boxX + 22 then
                     submitAuth()
                     drawUI()
@@ -819,13 +867,14 @@ while true do
                         if mx >= listX + 1 and mx <= listX + 10 then
                             -- Send Button
                             if inputFields.composeTo:gsub("%s+", "") == "" then
-                                _G.lUtils.popup("Gmail Error", "Please enter a recipient email address.", 34, 9, { "OK" })
+                                _G.lUtils.popup("Gmail Error", "Please enter a recipient username.", 34, 9, { "OK" })
                                 drawUI()
                             else
+                                local targetTo = normalizeEmail(inputFields.composeTo)
                                 local newMsg = {
                                     id = randomID(),
                                     from = userEmail,
-                                    to = inputFields.composeTo,
+                                    to = targetTo,
                                     subject = inputFields.composeSubject ~= "" and inputFields.composeSubject or "No Subject",
                                     body = inputFields.composeBody,
                                     timestamp = os.epoch("utc"),
@@ -847,7 +896,7 @@ while true do
                                     saveState()
                                 end
 
-                                _G.lUtils.popup("Gmail", "Email sent successfully to " .. inputFields.composeTo, 34, 9, { "OK" })
+                                _G.lUtils.popup("Gmail", "Email sent successfully to " .. targetTo, 36, 9, { "OK" })
                                 inputFields = { composeTo = "", composeSubject = "", composeBody = "" }
                                 currentView = "list"
                                 activeTab = "sent"
@@ -864,23 +913,23 @@ while true do
             end
         end
 
-    -- Character Typing
-    elseif eventType == "char" then
-        local ch = e[2]
+    -- Character Typing or Pasting
+    elseif eventType == "char" or eventType == "paste" then
+        local textInput = tostring(e[2])
         if mode == "login" and activeAuthField then
             if activeAuthField == "email" then
-                authInputs.email = authInputs.email .. ch
+                authInputs.email = authInputs.email .. textInput
             elseif activeAuthField == "password" then
-                authInputs.password = authInputs.password .. ch
+                authInputs.password = authInputs.password .. textInput
             end
             drawUI()
         elseif mode == "app" and currentView == "compose" and activeField then
             if activeField == "to" then
-                inputFields.composeTo = inputFields.composeTo .. ch
+                inputFields.composeTo = inputFields.composeTo .. textInput
             elseif activeField == "subject" then
-                inputFields.composeSubject = inputFields.composeSubject .. ch
+                inputFields.composeSubject = inputFields.composeSubject .. textInput
             elseif activeField == "body" then
-                inputFields.composeBody = inputFields.composeBody .. ch
+                inputFields.composeBody = inputFields.composeBody .. textInput
             end
             drawUI()
         end
@@ -896,10 +945,10 @@ while true do
                     authInputs.password = authInputs.password:sub(1, #authInputs.password - 1)
                 end
                 drawUI()
-            elseif key == keys.tab then
+            elseif key == keys.tab or key == keys.down or key == keys.up then
                 activeAuthField = (activeAuthField == "email") and "password" or "email"
                 drawUI()
-            elseif key == keys.enter then
+            elseif key == keys.enter or key == keys.numPadEnter then
                 submitAuth()
                 drawUI()
             end

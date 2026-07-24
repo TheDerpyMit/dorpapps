@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Central WebSocket Email Server for ComputerCraft / LevelOS Gmail Client
+Central WebSocket Email Server for ComputerCraft / DorpOS Gmail Client
 Compatible with Pterodactyl hosting. Default port: 25616 (or PORT env var).
 """
 
@@ -81,10 +81,10 @@ def save_emails():
 def normalize_email(addr):
     if not addr:
         return ""
-    addr = addr.strip().lower()
-    if "@" not in addr:
-        addr += "@tuah"
-    return addr
+    addr = str(addr).strip().lower()
+    if "@" in addr:
+        addr = addr.split("@")[0]
+    return f"{addr}@dorp.com"
 
 def hash_password(password, salt=None):
     if not salt:
@@ -119,7 +119,7 @@ async def broadcast_email(email_obj):
     for ws, client_email in connected_clients.items():
         if client_email:
             norm_client = normalize_email(client_email)
-            if norm_client in (recipient, sender) or recipient == "all@tuah":
+            if norm_client in (recipient, sender) or recipient == "all@dorp.com":
                 try:
                     await ws.send(json.dumps({
                         "event": "newemail",
@@ -145,12 +145,13 @@ async def handle_message(ws, raw_msg):
         password = req.get("password")
 
         if not raw_email or not password:
-            await send_json(ws, {"event": "register_response", "success": False, "error": "Email and password are required."})
+            await send_json(ws, {"event": "register_response", "success": False, "error": "Username and password are required."})
             return
 
         email = normalize_email(raw_email)
-        if len(email.split("@")[0]) < 2:
-            await send_json(ws, {"event": "register_response", "success": False, "error": "Username must be at least 2 characters long."})
+        alias = email.split("@")[0]
+        if len(alias) < 2:
+            await send_json(ws, {"event": "register_response", "success": False, "error": "Username alias must be at least 2 characters long."})
             return
 
         if email in users:
@@ -185,14 +186,14 @@ async def handle_message(ws, raw_msg):
         password = req.get("password")
 
         if not raw_email or not password:
-            await send_json(ws, {"event": "login_response", "success": False, "error": "Email and password are required."})
+            await send_json(ws, {"event": "login_response", "success": False, "error": "Username and password are required."})
             return
 
         email = normalize_email(raw_email)
         user_record = users.get(email)
 
         if not user_record or not verify_password(password, user_record.get("password")):
-            await send_json(ws, {"event": "login_response", "success": False, "error": "Invalid email address or password."})
+            await send_json(ws, {"event": "login_response", "success": False, "error": "Invalid username or password."})
             return
 
         token = secrets.token_hex(32)
@@ -234,7 +235,7 @@ async def handle_message(ws, raw_msg):
         for msg in emails:
             to_addr = normalize_email(msg.get("to"))
             from_addr = normalize_email(msg.get("from"))
-            if to_addr == email or from_addr == email or to_addr == "all@tuah":
+            if to_addr == email or from_addr == email or to_addr == "all@dorp.com":
                 user_emails.append(msg)
 
         await send_json(ws, {
@@ -327,13 +328,13 @@ async def main():
     host = "0.0.0.0"
 
     print("==================================================")
-    print(f" LevelOS Python Email Server Starting...")
+    print(f" DorpMail Python Email Server Starting...")
     print(f" Listening on {host}:{port}")
     print(f" Loaded {len(users)} registered users, {len(emails)} stored emails.")
     print("==================================================")
 
     async with websockets.serve(ws_handler, host, port):
-        await asyncio.Future()  # run forever
+        await asyncio.Future()
 
 if __name__ == "__main__":
     try:
