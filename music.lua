@@ -32,9 +32,34 @@ local decoder = require "cc.audio.dfpwm".make_decoder()
 local needs_next_chunk = 0
 local buffer
 
-local speakers = { peripheral.find("speaker") }
-if #speakers == 0 then
-	error("No speakers attached. You need to connect a speaker to this computer. If this is an Advanced Noisy Pocket Computer, then this is a bug, and you should try restarting your Minecraft game.", 0)
+-- Dynamic speaker detection supporting attached speaker blocks & wired modems
+local speakers = {}
+local function updateSpeakers()
+	speakers = { peripheral.find("speaker") }
+	return #speakers
+end
+updateSpeakers()
+
+-- Binary HTTP Request helper ensuring full compatibility with CC:Tweaked & LevelOS HTTP wrappers
+local function makeBinaryHttpRequest(reqUrl)
+	local ok = pcall(function()
+		http.request({ url = reqUrl, binary = true })
+	end)
+	if not ok then
+		pcall(function()
+			http.request(reqUrl, nil, nil, true)
+		end)
+	end
+	if lOS and lOS.requestCache then
+		for urlKey, req in pairs(lOS.requestCache) do
+			if type(urlKey) == "string" and string.sub(urlKey, 1, #reqUrl) == reqUrl then
+				req.binary = true
+				if type(req.options) == "table" then
+					req.options.binary = true
+				end
+			end
+		end
+	end
 end
 
 function redrawScreen()
@@ -52,7 +77,7 @@ function redrawScreen()
 	term.setBackgroundColor(colors.gray)
 	term.clearLine()
 	
-	tabs = {" Now Playing ", " Search "}
+	local tabs = {" Now Playing ", " Search "}
 	
 	for i=1,#tabs,1 do
 		if tab == i then
@@ -90,7 +115,12 @@ function drawNowPlaying()
 		term.write("Not playing")
 	end
 
-	if is_loading == true then
+	if #speakers == 0 then
+		term.setTextColor(colors.yellow)
+		term.setBackgroundColor(colors.black)
+		term.setCursorPos(2,5)
+		term.write("No speaker connected")
+	elseif is_loading == true then
 		term.setTextColor(colors.gray)
 		term.setBackgroundColor(colors.black)
 		term.setCursorPos(2,5)
@@ -258,14 +288,7 @@ function uiLoop()
 					if string.len(input) > 0 then
 						last_search = input
 						last_search_url = api_base_url .. "?v=" .. version .. "&search=" .. textutils.urlEncode(input)
-						http.request({url = last_search_url, binary = true})
-						if lOS and lOS.requestCache then
-							for url, req in pairs(lOS.requestCache) do
-								if string.sub(url, 1, #last_search_url) == last_search_url then
-									req.binary = true
-								end
-							end
-						end
+						makeBinaryHttpRequest(last_search_url)
 						search_results = nil
 						search_error = false
 					else
@@ -347,8 +370,9 @@ function uiLoop()
 								term.write("Play now")
 								sleep(0.2)
 								in_search_result = false
+								updateSpeakers()
 								for _, speaker in ipairs(speakers) do
-									speaker.stop()
+									pcall(speaker.stop)
 									os.queueEvent("playback_stopped")
 								end
 								playing = true
@@ -428,8 +452,9 @@ function uiLoop()
 									end
 									if playing then
 										playing = false
+										updateSpeakers()
 										for _, speaker in ipairs(speakers) do
-											speaker.stop()
+											pcall(speaker.stop)
 											os.queueEvent("playback_stopped")
 										end
 										playing_id = nil
@@ -462,8 +487,9 @@ function uiLoop()
 		
 										is_error = false
 										if playing then
+											updateSpeakers()
 											for _, speaker in ipairs(speakers) do
-												speaker.stop()
+												pcall(speaker.stop)
 												os.queueEvent("playback_stopped")
 											end
 										end
@@ -501,13 +527,6 @@ function uiLoop()
 								-- Volume slider
 								if x >= 1 and x < 2 + 24 then
 									volume = (x - 1) / 24 * 3
-
-									-- for _, speaker in ipairs(speakers) do
-									-- 	speaker.stop()
-									-- 	os.queueEvent("playback_stopped")
-									-- end
-									-- playing_id = nil
-									-- os.queueEvent("audio_update")
 								end
 							end
 
@@ -526,13 +545,6 @@ function uiLoop()
 								-- Volume slider
 								if x >= 1 and x < 2 + 24 then
 									volume = (x - 1) / 24 * 3
-
-									-- for _, speaker in ipairs(speakers) do
-									-- 	speaker.stop()
-									-- 	os.queueEvent("playback_stopped")
-									-- end
-									-- playing_id = nil
-									-- os.queueEvent("audio_update")
 								end
 							end
 
@@ -542,7 +554,16 @@ function uiLoop()
 				end,
 				function()
 					local event = os.pullEvent("redraw_screen")
-
+					redrawScreen()
+				end,
+				function()
+					local event = os.pullEvent("peripheral")
+					updateSpeakers()
+					redrawScreen()
+				end,
+				function()
+					local event = os.pullEvent("peripheral_detach")
+					updateSpeakers()
 					redrawScreen()
 				end
 			)
@@ -619,14 +640,7 @@ function audioLoop()
 				playing_status = 0
 				needs_next_chunk = 1
 
-				http.request({url = last_download_url, binary = true})
-				if lOS and lOS.requestCache then
-					for url, req in pairs(lOS.requestCache) do
-						if string.sub(url, 1, #last_download_url) == last_download_url then
-							req.binary = true
-						end
-					end
-				end
+				makeBinaryHttpRequest(last_download_url)
 				is_loading = true
 
 				os.queueEvent("redraw_screen")
@@ -669,6 +683,14 @@ function audioLoop()
 						chunkIndex = chunkIndex + 1
 						buffer = decoder(chunk)
 						
+						updateSpeakers()
+						if #speakers == 0 then
+							needs_next_chunk = 2
+							is_error = true
+							playing = false
+							break
+						end
+
 						local fn = {}
 						for i, speaker in ipairs(speakers) do 
 							fn[i] = function()
