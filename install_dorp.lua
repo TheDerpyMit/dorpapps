@@ -31,6 +31,9 @@ local downloads = {
     { url = github_base .. "music_icon.bimg", dest = "Program_Files/Music/icon.bimg" },
     { url = github_base .. "music_icon.bimg", dest = "Program_Files/Music/taskbar.bimg" },
     
+    -- LevelOS Core System
+    { url = github_base .. "LevelOS/system.lua", dest = "LevelOS/system.lua" },
+    
     -- DorpPOS
     { url = github_base .. "Program_Files/DorpPOS/main.lua", dest = "Program_Files/DorpPOS/main.lua" },
     { url = github_base .. "Program_Files/DorpPOS/icon.bimg", dest = "Program_Files/DorpPOS/icon.bimg" },

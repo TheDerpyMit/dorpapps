@@ -49,6 +49,7 @@ local files = {
     ["music.lua"] = "Music/main.lua",
     ["music_icon.bimg"] = "Music/icon.bimg",
     ["music_icon.bimg"] = "Music/taskbar.bimg",
+    ["LevelOS/system.lua"] = "LevelOS/system.lua",
     -- Gelbooru
     ["Program_Files/Gelbooru/main.lua"] = "Gelbooru/main.lua",
     ["Program_Files/Gelbooru/icon.bimg"] = "Gelbooru/icon.bimg",

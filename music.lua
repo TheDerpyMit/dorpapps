@@ -695,34 +695,16 @@ function audioLoop()
 						for i, speaker in ipairs(speakers) do 
 							fn[i] = function()
 								local name = peripheral.getName(speaker)
-								if #speakers > 1 then
-									if speaker.playAudio(buffer, volume) then
-										parallel.waitForAny(
-											function()
-												repeat until select(2, os.pullEvent("speaker_audio_empty")) == name
-											end,
-											function()
-												local event = os.pullEvent("playback_stopped")
-												return
-											end
-										)
-										if not playing or playing_id ~= thisnowplayingid then
+								while not speaker.playAudio(buffer, volume) do
+									local timerId = os.startTimer(0.05)
+									while true do
+										local ev, p1 = os.pullEvent()
+										if ev == "playback_stopped" or not playing or playing_id ~= thisnowplayingid then
 											return
-										end
-									end
-								else
-									while not speaker.playAudio(buffer, volume) do
-										parallel.waitForAny(
-											function()
-												repeat until select(2, os.pullEvent("speaker_audio_empty")) == name
-											end,
-											function()
-												local event = os.pullEvent("playback_stopped")
-												return
-											end
-										)
-										if not playing or playing_id ~= thisnowplayingid then
-											return
+										elseif ev == "speaker_audio_empty" and (p1 == name or not p1) then
+											break
+										elseif ev == "timer" and p1 == timerId then
+											break
 										end
 									end
 								end
