@@ -100,18 +100,15 @@ end
 
 -- Attempt silent auto-login using stored auth file
 local function tryAutoLogin()
-    local saved = emailCore.loadAuth()
-    if not saved then
+    if not initServerConnection() then
         mode = "login"
+        authError = "Server offline: Cannot connect to " .. emailCore.serverURL
         return
     end
 
-    if not initServerConnection() then
-        -- Load offline cached mail if server is down
-        userEmail = saved.email
-        authToken = saved.token
-        emails = emailCore.loadLocalMail(userEmail) or {}
-        mode = "app"
+    local saved = emailCore.loadAuth()
+    if not saved then
+        mode = "login"
         return
     end
 

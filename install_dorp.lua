@@ -1,7 +1,7 @@
 -- Dorp Apps Custom Apps Installer
 print("Dorp Apps Installer starting...")
 
-local github_base = "https://raw.githubusercontent.com/TheDerpyMit/dorpapps/refs/heads/main/"
+local github_base = "https://raw.githubusercontent.com/TheDerpyMit/dorpapps/main/"
 
 local downloads = {
     -- Notepad++
