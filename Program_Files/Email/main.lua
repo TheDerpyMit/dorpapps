@@ -188,37 +188,41 @@ local function submitAuth()
         return
     end
 
-    local resp = emailCore.receiveMessage(5)
+    local expectedEvt = authMode .. "_response"
+    local resp = nil
+    local deadline = os.epoch("utc") + 5000
+    while os.epoch("utc") < deadline do
+        local msg = emailCore.receiveMessage(1)
+        if msg and msg.event == expectedEvt then
+            resp = msg
+            break
+        end
+    end
 
     if not resp then
         authError = "No response from server. Try again."
         return
     end
 
-    local expectedEvt = authMode .. "_response"
-    if resp.event == expectedEvt then
-        if resp.success then
-            userEmail = resp.email
-            authToken = resp.token
-            emailCore.saveAuth(userEmail, authToken)
-            mode = "app"
-            authError = ""
-            authInputs = { email = "", password = "" }
+    if resp.success then
+        userEmail = resp.email
+        authToken = resp.token
+        emailCore.saveAuth(userEmail, authToken)
+        mode = "app"
+        authError = ""
+        authInputs = { email = "", password = "" }
 
-            -- Fetch emails
-            emailCore.sendPayload({ event = "list", token = authToken })
-            local listResp = emailCore.receiveMessage(2)
-            if listResp and listResp.event == "list_response" and listResp.emails then
-                emails = listResp.emails
-                saveState()
-            else
-                emails = emailCore.loadLocalMail(userEmail) or {}
-            end
+        -- Fetch emails
+        emailCore.sendPayload({ event = "list", token = authToken })
+        local listResp = emailCore.receiveMessage(2)
+        if listResp and listResp.event == "list_response" and listResp.emails then
+            emails = listResp.emails
+            saveState()
         else
-            authError = resp.error or "Authentication failed."
+            emails = emailCore.loadLocalMail(userEmail) or {}
         end
     else
-        authError = "Unexpected response from server."
+        authError = resp.error or "Authentication failed."
     end
 end
 
