@@ -352,10 +352,18 @@ local function drawAuthScreen()
 
     -- Status / Error Message
     if authError ~= "" then
-        term.setCursorPos(boxX, startY + 12)
         term.setBackgroundColor(colors.black)
-        term.setTextColor(colors.red)
-        term.write(authError:sub(1, boxWidth))
+        term.setTextColor(authError:find("Connecting") and colors.yellow or colors.red)
+        
+        local errY = startY + 12
+        local str = authError
+        while #str > 0 and errY <= (h - 1) do
+            term.setCursorPos(boxX, errY)
+            local chunk = str:sub(1, boxWidth)
+            str = str:sub(boxWidth + 1)
+            term.write(chunk .. string.rep(" ", boxWidth - #chunk))
+            errY = errY + 1
+        end
     end
 
     -- Position cursor and enable blink for active input field

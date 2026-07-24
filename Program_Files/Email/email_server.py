@@ -155,7 +155,7 @@ async def handle_message(ws, raw_msg):
             return
 
         if email in users:
-            await send_json(ws, {"event": "register_response", "success": False, "error": f"Email '{email}' is already registered!"})
+            await send_json(ws, {"event": "register_response", "success": False, "error": f"This email ({email}) already exists!"})
             return
 
         users[email] = {
@@ -192,8 +192,12 @@ async def handle_message(ws, raw_msg):
         email = normalize_email(raw_email)
         user_record = users.get(email)
 
-        if not user_record or not verify_password(password, user_record.get("password")):
-            await send_json(ws, {"event": "login_response", "success": False, "error": "Invalid username or password."})
+        if not user_record:
+            await send_json(ws, {"event": "login_response", "success": False, "error": f"This email ({email}) does not exist! Please register."})
+            return
+
+        if not verify_password(password, user_record.get("password")):
+            await send_json(ws, {"event": "login_response", "success": False, "error": "Password incorrect. Please try again."})
             return
 
         token = secrets.token_hex(32)
