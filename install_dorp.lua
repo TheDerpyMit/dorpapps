@@ -40,6 +40,8 @@ local downloads = {
     { url = github_base .. "Program_Files/Email/main.lua", dest = "Program_Files/Email/main.lua" },
     { url = github_base .. "Program_Files/Email/email_core.lua", dest = "Program_Files/Email/email_core.lua" },
     { url = github_base .. "Program_Files/Email/email_server.lua", dest = "Program_Files/Email/email_server.lua" },
+    { url = github_base .. "Program_Files/Email/email_server.py", dest = "Program_Files/Email/email_server.py" },
+    { url = github_base .. "Program_Files/Email/requirements.txt", dest = "Program_Files/Email/requirements.txt" },
     { url = github_base .. "Program_Files/Email/icon.bimg", dest = "Program_Files/Email/icon.bimg" },
     { url = github_base .. "Program_Files/Email/taskbar.bimg", dest = "Program_Files/Email/taskbar.bimg" },
     

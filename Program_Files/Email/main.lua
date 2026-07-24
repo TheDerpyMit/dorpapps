@@ -1,6 +1,6 @@
 -- Program_Files/Email/main.lua
 -- Modern Gmail Application for LevelOS & ComputerCraft
--- Features: Rednet Mail Sync, Archive/Unarchive, Read/Unread, Starred, Sent, Trash, Compose
+-- Features: WebSocket Server Sync, User Authentication (Login/Register), Persistence, Archive/Read/Starred/Trash/Compose
 
 if not _G.lUtils then shell.run("LevelOS/startup/lUtils") end
 
@@ -15,15 +15,30 @@ end
 
 local tArgs = { ... }
 if tArgs[1] == "load" then
-    return { name = "GMail", version = "2.0" }
+    return { name = "GMail", version = "3.0" }
 end
 if LevelOS and LevelOS.setTitle then
     LevelOS.setTitle("GMail")
 end
 
--- State Variables
-local userEmail = os.getComputerLabel() and (os.getComputerLabel():lower():gsub("%s+", "") .. "@tuah") or ("user" .. os.getComputerID() .. "@tuah")
-local serverID = nil
+-- App Mode State: "login" or "app"
+local mode = "login"
+local authMode = "login" -- "login" or "register"
+
+-- Auth & Connection State
+local userEmail = nil
+local authToken = nil
+local isConnected = false
+local authError = ""
+
+-- Login Form Input Fields
+local authInputs = {
+    email = "",
+    password = ""
+}
+local activeAuthField = "email"
+
+-- Main App State Variables
 local activeTab = "inbox" -- "inbox", "archive", "starred", "sent", "trash"
 local currentView = "list" -- "list", "detail", "compose"
 local selectedEmail = nil
@@ -50,61 +65,6 @@ local function randomID()
     return res
 end
 
--- Default sample emails for first launch / offline mode
-local function getInitialEmails()
-    local localCached = emailCore.loadLocalMail(userEmail)
-    if localCached and #localCached > 0 then
-        return localCached
-    end
-
-    local sample = {
-        {
-            id = "welcome01",
-            from = "system@tuah",
-            to = userEmail,
-            subject = "Welcome to Gmail for LevelOS!",
-            body = "Welcome to your brand new Gmail client on LevelOS!\n\nFeatures:\n- Full Rednet email server sync\n- Archive & Unarchive emails\n- Read & Unread tracking\n- Starred / Important folder\n- Sent & Trash folders\n\nEnjoy sending emails across your ComputerCraft network!",
-            timestamp = os.epoch("utc") - 3600000,
-            read = false,
-            archived = false,
-            starred = true,
-            deleted = false
-        },
-        {
-            id = "tips02",
-            from = "support@tuah",
-            to = userEmail,
-            subject = "Getting Started Tips",
-            body = "Tips for using Gmail:\n- Click [+ Compose] to write a new email.\n- Click Archive to remove messages from your Inbox into All Mail.\n- Use Arrow Keys or Mouse to navigate emails.",
-            timestamp = os.epoch("utc") - 86400000,
-            read = true,
-            archived = false,
-            starred = false,
-            deleted = false
-        }
-    }
-    emailCore.saveLocalMail(userEmail, sample)
-    return sample
-end
-
-emails = getInitialEmails()
-
--- Save emails to cache
-local function saveState()
-    emailCore.saveLocalMail(userEmail, emails)
-end
-
--- Connect Rednet Server
-local function connectServer()
-    serverID = emailCore.getServerID()
-    if serverID then
-        emailCore.send("hello", { sender = userEmail }, serverID)
-        emailCore.send("list", { sender = userEmail, user = userEmail, token = "auth_token" }, serverID)
-    end
-end
-
-connectServer()
-
 -- Helper to format email timestamps
 local function formatDate(ts)
     if not ts then return "" end
@@ -116,7 +76,142 @@ local function formatDate(ts)
     end
 end
 
--- Get filtered list of emails for current tab
+-- Save local mail cache
+local function saveState()
+    if userEmail then
+        emailCore.saveLocalMail(userEmail, emails)
+    end
+end
+
+-- Try connecting & authenticating with WebSocket server
+local function initServerConnection()
+    authError = "Connecting to server..."
+    local ws, err = emailCore.connect()
+    if not ws then
+        isConnected = false
+        authError = "Server offline: " .. (err or "Connection failed")
+        return false
+    end
+
+    isConnected = true
+    authError = ""
+    return true
+end
+
+-- Attempt silent auto-login using stored auth file
+local function tryAutoLogin()
+    local saved = emailCore.loadAuth()
+    if not saved then
+        mode = "login"
+        return
+    end
+
+    if not initServerConnection() then
+        -- Load offline cached mail if server is down
+        userEmail = saved.email
+        authToken = saved.token
+        emails = emailCore.loadLocalMail(userEmail) or {}
+        mode = "app"
+        return
+    end
+
+    -- Send auth check request
+    emailCore.sendPayload({ event = "auth_check", token = saved.token })
+    local resp = emailCore.receiveMessage(3)
+    if resp and resp.event == "auth_response" and resp.success then
+        userEmail = resp.email
+        authToken = saved.token
+        mode = "app"
+
+        -- Request email list from server
+        emailCore.sendPayload({ event = "list", token = authToken })
+        local listResp = emailCore.receiveMessage(2)
+        if listResp and listResp.event == "list_response" and listResp.emails then
+            emails = listResp.emails
+            saveState()
+        else
+            emails = emailCore.loadLocalMail(userEmail) or {}
+        end
+    else
+        -- Token expired or invalid
+        emailCore.clearAuth()
+        mode = "login"
+        authError = "Session expired. Please log in again."
+    end
+end
+
+-- Process Login or Registration Submit
+local function submitAuth()
+    if authInputs.email:gsub("%s+", "") == "" then
+        authError = "Please enter an email or username."
+        return
+    end
+    if authInputs.password == "" then
+        authError = "Please enter a password."
+        return
+    end
+
+    if not isConnected then
+        if not initServerConnection() then
+            return
+        end
+    end
+
+    authError = "Authenticating..."
+    
+    local payload = {
+        event = authMode,
+        email = authInputs.email,
+        password = authInputs.password
+    }
+    
+    emailCore.sendPayload(payload)
+    local resp = emailCore.receiveMessage(4)
+
+    if not resp then
+        authError = "No response from server. Try again."
+        return
+    end
+
+    local expectedEvt = authMode .. "_response"
+    if resp.event == expectedEvt then
+        if resp.success then
+            userEmail = resp.email
+            authToken = resp.token
+            emailCore.saveAuth(userEmail, authToken)
+            mode = "app"
+            authError = ""
+            authInputs = { email = "", password = "" }
+
+            -- Fetch emails
+            emailCore.sendPayload({ event = "list", token = authToken })
+            local listResp = emailCore.receiveMessage(2)
+            if listResp and listResp.event == "list_response" and listResp.emails then
+                emails = listResp.emails
+                saveState()
+            else
+                emails = emailCore.loadLocalMail(userEmail) or {}
+            end
+        else
+            authError = resp.error or "Authentication failed."
+        end
+    else
+        authError = "Unexpected response from server."
+    end
+end
+
+-- Perform Logout
+local function logout()
+    emailCore.clearAuth()
+    emailCore.close()
+    userEmail = nil
+    authToken = nil
+    mode = "login"
+    authError = ""
+    emails = {}
+end
+
+-- Filtered emails for current tab
 local function getFilteredEmails()
     local filtered = {}
     for _, msg in ipairs(emails) do
@@ -146,7 +241,7 @@ local function getFilteredEmails()
     return filtered
 end
 
--- Count unread emails in Inbox
+-- Count unread emails
 local function getUnreadCount()
     local count = 0
     for _, msg in ipairs(emails) do
@@ -155,6 +250,82 @@ local function getUnreadCount()
         end
     end
     return count
+end
+
+-- Draw Authentication (Login / Register) Screen
+local function drawAuthScreen()
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.white)
+    term.clear()
+
+    -- Title Bar
+    term.setCursorPos(1, 1)
+    term.setBackgroundColor(colors.red)
+    term.setTextColor(colors.white)
+    term.clearLine()
+    term.setCursorPos(2, 1)
+    term.write("M LevelOS GMail - Authentication")
+
+    -- Server Info
+    term.setCursorPos(w - 18, 1)
+    term.setTextColor(isConnected and colors.lime or colors.yellow)
+    term.write(isConnected and "[Server Online]" or "[Connecting...]")
+
+    local boxWidth = math.min(42, w - 4)
+    local boxX = math.floor((w - boxWidth) / 2) + 1
+    local startY = 3
+
+    -- Mode Tabs
+    term.setCursorPos(boxX, startY)
+    term.setBackgroundColor(authMode == "login" and colors.lightBlue or colors.gray)
+    term.setTextColor(colors.white)
+    term.write(" [ Log In ] ")
+
+    term.setCursorPos(boxX + 13, startY)
+    term.setBackgroundColor(authMode == "register" and colors.lime or colors.gray)
+    term.setTextColor(colors.black)
+    term.write(" [ Create Account ] ")
+
+    -- Email / Username Label
+    term.setCursorPos(boxX, startY + 3)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.lightGray)
+    term.write("Email Address / Handle:")
+
+    -- Email Field Box
+    term.setCursorPos(boxX, startY + 4)
+    term.setBackgroundColor(activeAuthField == "email" and colors.white or colors.lightGray)
+    term.setTextColor(colors.black)
+    local emailVal = authInputs.email
+    term.write(" " .. emailVal .. string.rep(" ", boxWidth - #emailVal - 2) .. " ")
+
+    -- Password Label
+    term.setCursorPos(boxX, startY + 6)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.lightGray)
+    term.write("Password:")
+
+    -- Password Field Box
+    term.setCursorPos(boxX, startY + 7)
+    term.setBackgroundColor(activeAuthField == "password" and colors.white or colors.lightGray)
+    term.setTextColor(colors.black)
+    local passVal = string.rep("*", #authInputs.password)
+    term.write(" " .. passVal .. string.rep(" ", boxWidth - #passVal - 2) .. " ")
+
+    -- Submit Button
+    term.setCursorPos(boxX, startY + 10)
+    term.setBackgroundColor(colors.lime)
+    term.setTextColor(colors.black)
+    local btnText = authMode == "login" and " [ Log In ] " or " [ Create Account ] "
+    term.write(btnText)
+
+    -- Status / Error Message
+    if authError ~= "" then
+        term.setCursorPos(boxX, startY + 12)
+        term.setBackgroundColor(colors.black)
+        term.setTextColor(colors.red)
+        term.write(authError:sub(1, boxWidth))
+    end
 end
 
 -- Draw Header Bar
@@ -166,10 +337,18 @@ local function drawHeader()
     term.setCursorPos(2, 1)
     term.write("M GMail")
     
-    local userBadge = "<" .. userEmail .. ">"
-    term.setCursorPos(w - #userBadge, 1)
-    term.setTextColor(colors.yellow)
-    term.write(userBadge)
+    if userEmail then
+        local userBadge = "<" .. userEmail .. "> "
+        local logoutBtn = "[ Logout ]"
+        
+        term.setCursorPos(w - #userBadge - #logoutBtn + 1, 1)
+        term.setTextColor(colors.yellow)
+        term.write(userBadge)
+
+        term.setTextColor(colors.white)
+        term.setBackgroundColor(colors.gray)
+        term.write(logoutBtn)
+    end
 end
 
 -- Draw Sidebar Navigation
@@ -181,7 +360,7 @@ local function drawSidebar()
         term.write(string.rep(" ", sidebarWidth))
         term.setCursorPos(sidebarWidth, y)
         term.setTextColor(colors.lightGray)
-        term.write("\149") -- Vertical separator
+        term.write("\149")
     end
 
     -- Compose Button
@@ -242,8 +421,8 @@ local function drawListView()
         term.clearLine()
 
         -- Read / Unread Indicator & Star
-        local starSymbol = msg.starred and "\15" or "\18" -- Star symbol
-        local readDot = msg.read and " " or "\7" -- Bullet dot for unread
+        local starSymbol = msg.starred and "\15" or "\18"
+        local readDot = msg.read and " " or "\7"
 
         term.setCursorPos(listX + 1, y)
         term.setTextColor(msg.read and colors.lightGray or colors.yellow)
@@ -253,7 +432,7 @@ local function drawListView()
 
         -- Sender
         term.setTextColor(msg.read and colors.lightGray or colors.white)
-        local senderStr = msg.from:sub(1, 10)
+        local senderStr = (msg.from or ""):sub(1, 10)
         term.write(senderStr .. string.rep(" ", 11 - #senderStr))
 
         -- Subject preview
@@ -319,13 +498,13 @@ local function drawDetailView()
     term.setTextColor(colors.lightGray)
     term.write("From: ")
     term.setTextColor(colors.white)
-    term.write(selectedEmail.from)
+    term.write(selectedEmail.from or "")
 
     term.setCursorPos(listX + 1, 6)
     term.setTextColor(colors.lightGray)
     term.write("To: ")
     term.setTextColor(colors.white)
-    term.write(selectedEmail.to)
+    term.write(selectedEmail.to or "")
 
     term.setCursorPos(listX + 1, 7)
     term.setTextColor(colors.lightGray)
@@ -412,6 +591,11 @@ end
 
 -- Render Full UI
 local function drawUI()
+    if mode == "login" then
+        drawAuthScreen()
+        return
+    end
+
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.white)
     term.clear()
@@ -428,13 +612,12 @@ local function drawUI()
     end
 end
 
--- Main Event Loop
+-- Initialize App State & Attempt Login
+tryAutoLogin()
 drawUI()
 
-if not serverID then
-    _G.lUtils.popup("Gmail Status", "No Rednet Mail Server found!\nEnsure wireless modem is attached.\nRunning in Offline Mode.", 36, 9, { "OK" })
-    drawUI()
-end
+-- Timer to poll background WebSocket messages
+local wsTimer = os.startTimer(0.5)
 
 while true do
     sleep(0)
@@ -446,165 +629,285 @@ while true do
         drawUI()
     end
 
-    -- Handle incoming Rednet messages
-    if eventType == "rednet_message" then
-        local parsed = emailCore.parseMessage(e)
-        if parsed then
-            if parsed.event == "newemail" and parsed.data then
-                table.insert(emails, parsed.data)
-                saveState()
-                drawUI()
-            elseif parsed.event == "list" and type(parsed.data) == "table" then
-                emails = parsed.data
-                saveState()
-                drawUI()
+    -- Poll incoming WebSocket messages
+    if eventType == "timer" and e[2] == wsTimer then
+        if mode == "app" and emailCore.ws then
+            local msg = emailCore.receiveMessage(0)
+            if msg then
+                if msg.event == "newemail" and msg.data then
+                    table.insert(emails, msg.data)
+                    saveState()
+                    drawUI()
+                elseif msg.event == "list_response" and type(msg.emails) == "table" then
+                    emails = msg.emails
+                    saveState()
+                    drawUI()
+                end
+            end
+        end
+        wsTimer = os.startTimer(0.5)
+    end
+
+    -- WebSocket direct event
+    if eventType == "websocket_message" then
+        if mode == "app" and type(e[2]) == "string" then
+            local msg = textutils.unserializeJSON(e[2])
+            if msg then
+                if msg.event == "newemail" and msg.data then
+                    table.insert(emails, msg.data)
+                    saveState()
+                    drawUI()
+                elseif msg.event == "list_response" and type(msg.emails) == "table" then
+                    emails = msg.emails
+                    saveState()
+                    drawUI()
+                end
             end
         end
     end
 
+    -- Mouse Clicks
     if eventType == "mouse_click" then
         local mx, my = e[3], e[4]
 
-        -- Sidebar Clicks
-        if mx <= sidebarWidth then
-            if my == 3 then
-                currentView = "compose"
-                activeField = "to"
+        if mode == "login" then
+            local boxWidth = math.min(42, w - 4)
+            local boxX = math.floor((w - boxWidth) / 2) + 1
+            local startY = 3
+
+            -- Mode Tabs Click
+            if my == startY then
+                if mx >= boxX and mx <= boxX + 11 then
+                    authMode = "login"
+                    authError = ""
+                    drawUI()
+                elseif mx >= boxX + 13 and mx <= boxX + 31 then
+                    authMode = "register"
+                    authError = ""
+                    drawUI()
+                end
+            elseif my == startY + 4 then
+                activeAuthField = "email"
                 drawUI()
-            elseif my >= 5 and my <= 9 then
-                local tabIndex = my - 4
-                local tabList = { "inbox", "starred", "archive", "sent", "trash" }
-                if tabList[tabIndex] then
-                    activeTab = tabList[tabIndex]
-                    currentView = "list"
+            elseif my == startY + 7 then
+                activeAuthField = "password"
+                drawUI()
+            elseif my == startY + 10 then
+                if mx >= boxX and mx <= boxX + 22 then
+                    submitAuth()
                     drawUI()
                 end
             end
+
         else
-            -- Main View Clicks
-            local listX = sidebarWidth + 1
-
-            if currentView == "list" then
-                local filtered = getFilteredEmails()
-                local clickedIdx = my - 2
-                if clickedIdx >= 1 and clickedIdx <= #filtered then
-                    selectedEmail = filtered[clickedIdx]
-                    selectedEmail.read = true
-                    saveState()
-
-                    -- Send read notification to server
-                    if serverID then
-                        emailCore.send("read", { id = selectedEmail.id, sender = userEmail, user = userEmail, token = "auth_token" }, serverID)
-                    end
-                    currentView = "detail"
+            -- Main App Header Click (Logout Button)
+            if my == 1 then
+                local userBadge = "<" .. (userEmail or "") .. "> "
+                local logoutBtn = "[ Logout ]"
+                local logoutX = w - #logoutBtn + 1
+                if mx >= logoutX then
+                    logout()
                     drawUI()
                 end
 
-            elseif currentView == "detail" then
-                if my == 2 then
-                    -- Toolbar button clicks
-                    if mx >= listX + 1 and mx <= listX + 9 then
-                        currentView = "list"
-                        drawUI()
-                    elseif mx >= listX + 11 and mx <= listX + 23 then
-                        -- Archive / Unarchive
-                        if selectedEmail then
-                            selectedEmail.archived = not selectedEmail.archived
-                            saveState()
-                            _G.lUtils.popup("Gmail", selectedEmail.archived and "Email moved to Archive." or "Email restored to Inbox.", 32, 9, { "OK" })
-                            currentView = "list"
-                            drawUI()
-                        end
-                    elseif mx >= listX + 25 and mx <= listX + 39 then
-                        -- Mark Read / Unread
-                        if selectedEmail then
-                            selectedEmail.read = not selectedEmail.read
-                            saveState()
-                            if serverID then
-                                local evt = selectedEmail.read and "read" or "unread"
-                                emailCore.send(evt, { id = selectedEmail.id, sender = userEmail, user = userEmail, token = "auth_token" }, serverID)
-                            end
-                            drawUI()
-                        end
-                    elseif mx >= listX + 41 and mx <= listX + 49 then
-                        -- Delete / Trash
-                        if selectedEmail then
-                            selectedEmail.deleted = true
-                            saveState()
-                            if serverID then
-                                emailCore.send("delete", { id = selectedEmail.id, sender = userEmail, user = userEmail, token = "auth_token" }, serverID)
-                            end
-                            _G.lUtils.popup("Gmail", "Email moved to Trash.", 30, 9, { "OK" })
-                            currentView = "list"
-                            drawUI()
-                        end
-                    end
-                end
-
-            elseif currentView == "compose" then
-                if my == 4 then
+            -- Sidebar Clicks
+            elseif mx <= sidebarWidth then
+                if my == 3 then
+                    currentView = "compose"
                     activeField = "to"
                     drawUI()
-                elseif my == 6 then
-                    activeField = "subject"
-                    drawUI()
-                elseif my == 8 or my == 9 then
-                    activeField = "body"
-                    drawUI()
-                elseif my == 12 then
-                    if mx >= listX + 1 and mx <= listX + 10 then
-                        -- Send Button
-                        if inputFields.composeTo == "" then
-                            _G.lUtils.popup("Gmail Error", "Please enter a recipient email address.", 34, 9, { "OK" })
-                            drawUI()
-                        else
-                            local newMsg = {
-                                id = randomID(),
-                                from = userEmail,
-                                to = inputFields.composeTo,
-                                subject = inputFields.composeSubject ~= "" and inputFields.composeSubject or "No Subject",
-                                body = inputFields.composeBody,
-                                timestamp = os.epoch("utc"),
-                                read = true,
-                                archived = false,
-                                starred = false,
-                                deleted = false
-                            }
-                            table.insert(emails, newMsg)
-                            saveState()
-
-                            -- Send Rednet message
-                            emailCore.send("newemail", newMsg, serverID)
-
-                            _G.lUtils.popup("Gmail", "Email sent successfully to " .. inputFields.composeTo, 34, 9, { "OK" })
-                            inputFields = { composeTo = "", composeSubject = "", composeBody = "" }
-                            currentView = "list"
-                            activeTab = "sent"
-                            drawUI()
-                        end
-                    elseif mx >= listX + 12 and mx <= listX + 22 then
-                        -- Cancel Button
-                        inputFields = { composeTo = "", composeSubject = "", composeBody = "" }
+                elseif my >= 5 and my <= 9 then
+                    local tabIndex = my - 4
+                    local tabList = { "inbox", "starred", "archive", "sent", "trash" }
+                    if tabList[tabIndex] then
+                        activeTab = tabList[tabIndex]
                         currentView = "list"
                         drawUI()
+                    end
+                end
+            else
+                -- Main View Clicks
+                local listX = sidebarWidth + 1
+
+                if currentView == "list" then
+                    local filtered = getFilteredEmails()
+                    local clickedIdx = my - 2
+                    if clickedIdx >= 1 and clickedIdx <= #filtered then
+                        selectedEmail = filtered[clickedIdx]
+                        selectedEmail.read = true
+                        saveState()
+
+                        -- Send update to server
+                        if authToken then
+                            emailCore.sendPayload({
+                                event = "update_email",
+                                token = authToken,
+                                id = selectedEmail.id,
+                                updates = { read = true }
+                            })
+                        end
+                        currentView = "detail"
+                        drawUI()
+                    end
+
+                elseif currentView == "detail" then
+                    if my == 2 then
+                        -- Toolbar button clicks
+                        if mx >= listX + 1 and mx <= listX + 9 then
+                            currentView = "list"
+                            drawUI()
+                        elseif mx >= listX + 11 and mx <= listX + 23 then
+                            -- Archive / Unarchive
+                            if selectedEmail then
+                                selectedEmail.archived = not selectedEmail.archived
+                                saveState()
+                                if authToken then
+                                    emailCore.sendPayload({
+                                        event = "update_email",
+                                        token = authToken,
+                                        id = selectedEmail.id,
+                                        updates = { archived = selectedEmail.archived }
+                                    })
+                                end
+                                _G.lUtils.popup("Gmail", selectedEmail.archived and "Email moved to Archive." or "Email restored to Inbox.", 32, 9, { "OK" })
+                                currentView = "list"
+                                drawUI()
+                            end
+                        elseif mx >= listX + 25 and mx <= listX + 39 then
+                            -- Mark Read / Unread
+                            if selectedEmail then
+                                selectedEmail.read = not selectedEmail.read
+                                saveState()
+                                if authToken then
+                                    emailCore.sendPayload({
+                                        event = "update_email",
+                                        token = authToken,
+                                        id = selectedEmail.id,
+                                        updates = { read = selectedEmail.read }
+                                    })
+                                end
+                                drawUI()
+                            end
+                        elseif mx >= listX + 41 and mx <= listX + 49 then
+                            -- Delete / Trash
+                            if selectedEmail then
+                                selectedEmail.deleted = true
+                                saveState()
+                                if authToken then
+                                    emailCore.sendPayload({
+                                        event = "update_email",
+                                        token = authToken,
+                                        id = selectedEmail.id,
+                                        updates = { deleted = true }
+                                    })
+                                end
+                                _G.lUtils.popup("Gmail", "Email moved to Trash.", 30, 9, { "OK" })
+                                currentView = "list"
+                                drawUI()
+                            end
+                        end
+                    end
+
+                elseif currentView == "compose" then
+                    if my == 4 then
+                        activeField = "to"
+                        drawUI()
+                    elseif my == 6 then
+                        activeField = "subject"
+                        drawUI()
+                    elseif my == 8 or my == 9 then
+                        activeField = "body"
+                        drawUI()
+                    elseif my == 12 then
+                        if mx >= listX + 1 and mx <= listX + 10 then
+                            -- Send Button
+                            if inputFields.composeTo:gsub("%s+", "") == "" then
+                                _G.lUtils.popup("Gmail Error", "Please enter a recipient email address.", 34, 9, { "OK" })
+                                drawUI()
+                            else
+                                local newMsg = {
+                                    id = randomID(),
+                                    from = userEmail,
+                                    to = inputFields.composeTo,
+                                    subject = inputFields.composeSubject ~= "" and inputFields.composeSubject or "No Subject",
+                                    body = inputFields.composeBody,
+                                    timestamp = os.epoch("utc"),
+                                    read = true,
+                                    archived = false,
+                                    starred = false,
+                                    deleted = false
+                                }
+
+                                -- Send WebSocket event to server
+                                if authToken then
+                                    emailCore.sendPayload({
+                                        event = "newemail",
+                                        token = authToken,
+                                        data = newMsg
+                                    })
+                                else
+                                    table.insert(emails, newMsg)
+                                    saveState()
+                                end
+
+                                _G.lUtils.popup("Gmail", "Email sent successfully to " .. inputFields.composeTo, 34, 9, { "OK" })
+                                inputFields = { composeTo = "", composeSubject = "", composeBody = "" }
+                                currentView = "list"
+                                activeTab = "sent"
+                                drawUI()
+                            end
+                        elseif mx >= listX + 12 and mx <= listX + 22 then
+                            -- Cancel Button
+                            inputFields = { composeTo = "", composeSubject = "", composeBody = "" }
+                            currentView = "list"
+                            drawUI()
+                        end
                     end
                 end
             end
         end
 
-    elseif eventType == "char" and currentView == "compose" and activeField then
-        if activeField == "to" then
-            inputFields.composeTo = inputFields.composeTo .. e[2]
-        elseif activeField == "subject" then
-            inputFields.composeSubject = inputFields.composeSubject .. e[2]
-        elseif activeField == "body" then
-            inputFields.composeBody = inputFields.composeBody .. e[2]
+    -- Character Typing
+    elseif eventType == "char" then
+        local ch = e[2]
+        if mode == "login" and activeAuthField then
+            if activeAuthField == "email" then
+                authInputs.email = authInputs.email .. ch
+            elseif activeAuthField == "password" then
+                authInputs.password = authInputs.password .. ch
+            end
+            drawUI()
+        elseif mode == "app" and currentView == "compose" and activeField then
+            if activeField == "to" then
+                inputFields.composeTo = inputFields.composeTo .. ch
+            elseif activeField == "subject" then
+                inputFields.composeSubject = inputFields.composeSubject .. ch
+            elseif activeField == "body" then
+                inputFields.composeBody = inputFields.composeBody .. ch
+            end
+            drawUI()
         end
-        drawUI()
 
+    -- Key presses
     elseif eventType == "key" then
         local key = e[2]
-        if currentView == "compose" and activeField then
+        if mode == "login" then
+            if key == keys.backspace then
+                if activeAuthField == "email" then
+                    authInputs.email = authInputs.email:sub(1, #authInputs.email - 1)
+                elseif activeAuthField == "password" then
+                    authInputs.password = authInputs.password:sub(1, #authInputs.password - 1)
+                end
+                drawUI()
+            elseif key == keys.tab then
+                activeAuthField = (activeAuthField == "email") and "password" or "email"
+                drawUI()
+            elseif key == keys.enter then
+                submitAuth()
+                drawUI()
+            end
+
+        elseif mode == "app" and currentView == "compose" and activeField then
             if key == keys.backspace then
                 if activeField == "to" then
                     inputFields.composeTo = inputFields.composeTo:sub(1, #inputFields.composeTo - 1)
